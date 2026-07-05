@@ -234,6 +234,30 @@ Thực hiện:
 Block chỉ cần thêm một lần vào product template. Nó chỉ hiển thị nút Customize khi product có metafield custom.amazon_customizer.
 
 
+8A. BẬT APP EMBED CHO ẢNH PREVIEW TRONG GIỎ HÀNG
+-------------------------------------------------
+
+Ngoài product app block, cần bật app embed toàn cục để thay ảnh gốc bằng ảnh preview đã custom trong cart page và cart drawer.
+
+Trong Theme Editor của theme Horizon đang live:
+
+1. Nhìn thanh công cụ bên trái.
+2. Chọn biểu tượng App embeds.
+3. Tìm Customizer cart previews.
+4. Bật công tắc của embed này.
+5. Bấm Save.
+6. Mở lại trang giỏ hàng và nhấn Ctrl + Shift + R.
+
+Hai thành phần có nhiệm vụ khác nhau:
+
+- Amazon customizer app block: hiển thị nút Customize và modal trên product page.
+- Customizer cart previews app embed: chạy trên toàn storefront và thay thumbnail trong cart/cart drawer bằng _customization_preview.
+
+Nếu không bật app embed, customization vẫn được lưu và thêm vào cart nhưng Horizon tiếp tục hiển thị ảnh variant gốc.
+
+App embed chỉ thay ảnh trong cart page và cart drawer. Shopify checkout trên gói thường vẫn hiển thị ảnh variant gốc do không cho app thay thumbnail checkout động.
+
+
 9. LẤY RAW JSON TỪ AMAZON
 -------------------------
 

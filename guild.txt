@@ -328,6 +328,14 @@ Sync sẽ tạo/cập nhật:
 - Sản phẩm nội bộ Customization Add-on.
 - Các variant phụ phí VND.
 
+Sản phẩm Customization Add-on là tài nguyên nội bộ do app quản lý:
+
+- App đặt trạng thái product là UNLISTED.
+- App đặt metafield seo.hidden = 1.
+- Product không xuất hiện trong storefront search, predictive search, collections, recommendations, sitemap hoặc Shopify Catalog.
+- Direct URL vẫn có thể mở và các variant vẫn được Cart API sử dụng để thu phụ phí.
+- Không đổi handle, xóa variant, sửa SKU/giá hoặc chuyển trạng thái product này bằng tay; lần Sync tiếp theo sẽ đồng bộ lại theo cấu hình Amazon.
+
 
 12. TEST TRÊN STOREFRONT
 ------------------------

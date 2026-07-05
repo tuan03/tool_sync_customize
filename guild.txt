@@ -336,6 +336,13 @@ Sản phẩm Customization Add-on là tài nguyên nội bộ do app quản lý:
 - Direct URL vẫn có thể mở và các variant vẫn được Cart API sử dụng để thu phụ phí.
 - Không đổi handle, xóa variant, sửa SKU/giá hoặc chuyển trạng thái product này bằng tay; lần Sync tiếp theo sẽ đồng bộ lại theo cấu hình Amazon.
 
+Khi khách Add to cart, app gửi các variant phụ phí dưới dạng nested cart lines với sản phẩm custom là parent. Vì vậy:
+
+- Horizon và Shopify Checkout hiển thị phụ phí thụt vào dưới sản phẩm chính như add-on/lựa chọn, thay vì một sản phẩm độc lập ngang hàng.
+- Khi xóa sản phẩm chính, Shopify tự xóa các dòng phụ phí con.
+- Phụ phí vẫn là merchandise line để Shopify tính tiền chính xác; trên gói thường không thể biến phụ phí thành property thuần mà vẫn cộng giá.
+- Những sản phẩm đã nằm trong cart trước khi phiên bản nested được deploy vẫn giữ cấu trúc cũ; cần xóa và custom/add lại để kiểm tra giao diện mới.
+
 
 12. TEST TRÊN STOREFRONT
 ------------------------

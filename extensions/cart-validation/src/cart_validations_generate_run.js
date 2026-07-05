@@ -30,7 +30,11 @@ export function cartValidationsGenerateRun(input) {
     const declared = Number(main.expectedFee.value || 0) * Number(main.quantity || 1);
     const actual = group.fees.reduce((total, line) => total + Number(line.feeComponent.value || 0) * Number(line.quantity || 1), 0);
     const parentVariantId = String(main.merchandise.id || "").split("/").pop();
-    const wrongParent = group.fees.some((line) => !line.parentVariant || line.parentVariant.value !== parentVariantId);
+    const wrongParent = group.fees.some((line) => {
+      const propertyMismatch = !line.parentVariant || line.parentVariant.value !== parentVariantId;
+      const nestedParentMismatch = !line.parentRelationship || !line.parentRelationship.parent || line.parentRelationship.parent.id !== main.id;
+      return propertyMismatch || nestedParentMismatch;
+    });
     if (expected !== declared || expected !== actual || wrongParent) errors.push({ message: "Customization surcharge is incomplete or invalid. Please remove the item and customize it again.", target: "$.cart" });
   }
   for (const line of input.cart.lines || []) {

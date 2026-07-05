@@ -8,6 +8,7 @@ query CartValidationsGenerateRunInput {
       selectedOptions: attribute(key: "_customization_options") { value }
       feeComponent: attribute(key: "_customization_fee_component") { value }
       parentVariant: attribute(key: "_customization_parent_variant") { value }
+      parentRelationship { parent { id } }
       merchandise {
         ... on ProductVariant {
           id

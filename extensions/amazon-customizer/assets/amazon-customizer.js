@@ -15,6 +15,30 @@
     for (const group of config.colorGroups || []) colors[group.id] = group.defaultColorId || (group.options[0] && group.options[0].id) || "";
     return { options, fonts, colors, texts: {}, images: {}, imageTransforms: {}, placementOffsets: {}, visible: {}, errors: {} };
   }
+  function formatMoney(value) { return `${Number(value || 0).toLocaleString()} VND`; }
+  function activeStyleGroup(instance, item, groups) {
+    let best = groups && groups[0], bestScore = -1;
+    const ancestors = new Set(item.ancestors || []);
+    for (const group of groups || []) {
+      let score = group.groupId && group.groupId === item.groupId ? 100 : 0;
+      for (const id of group.ancestors || []) if (ancestors.has(id)) score += 1;
+      if (score > bestScore) { best = group; bestScore = score; }
+    }
+    return best;
+  }
+  function normalizeText(value, input) {
+    let text = String(value || "");
+    if (input.maxLines) text = text.split(/\r?\n/).slice(0, input.maxLines).join("\n");
+    if (input.maxLength) text = text.slice(0, input.maxLength);
+    return text;
+  }
+  function textFontSize(input, boxStyles, value) {
+    const width = Number(String(boxStyles.width || "100").replace("%", "")) || 100;
+    const height = Number(String(boxStyles.height || "20").replace("%", "")) || 20;
+    const lines = String(value || "").split(/\r?\n/);
+    const longest = lines.reduce((max, line) => Math.max(max, line.length), 1);
+    return `${Math.max(10, Math.min(34, height * 2.7, width * 1.55 / Math.max(1, longest * 0.08)))}px`;
+  }
   function evaluate(instance) {
     const state = instance.state;
     state.visible = {};
@@ -58,19 +82,21 @@
     for (const input of config.imageInputs || []) {
       if (!visible(instance, input) || !state.images[input.id]) continue;
       const layer = document.createElement("div"); layer.className = "amzcustom-layer"; layer.dataset.placementId=input.placementId||""; setBox(layer, box(config, input.placementId, state));
-      const transform = state.imageTransforms[input.id] || { scale: 1, rotation: 0 };
-      layer.innerHTML = `<img alt="" src="${escapeHtml(state.images[input.id].dataUrl)}" style="transform:scale(${transform.scale}) rotate(${transform.rotation}deg)">`;
+      layer.dataset.editId = `image:${input.id}`;
+      const transform = state.imageTransforms[input.id] || { x: 0, y: 0, scale: 1, rotation: 0 };
+      layer.innerHTML = `<img alt="" src="${escapeHtml(state.images[input.id].dataUrl)}" style="transform:translate(${transform.x || 0}%,${transform.y || 0}%) scale(${transform.scale || 1}) rotate(${transform.rotation || 0}deg)">`;
       stage.appendChild(layer);
     }
     for (const input of config.textInputs || []) {
       if (!visible(instance, input) || !state.texts[input.id]) continue;
-      const layer = document.createElement("div"); layer.className = "amzcustom-layer"; layer.dataset.placementId=input.placementId||""; setBox(layer, box(config, input.placementId, state));
-      const fontGroup = (config.fontGroups || []).find((group) => group.groupId && group.groupId === input.groupId) || config.fontGroups?.[0];
-      const colorGroup = (config.colorGroups || []).find((group) => group.groupId && group.groupId === input.groupId) || config.colorGroups?.[0];
+      const boxStyles = box(config, input.placementId, state);
+      const layer = document.createElement("div"); layer.className = "amzcustom-layer amzcustom-text-layer"; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = `text:${input.id}`; setBox(layer, boxStyles);
+      const fontGroup = activeStyleGroup(instance, input, config.fontGroups || []);
+      const colorGroup = activeStyleGroup(instance, input, config.colorGroups || []);
       const font = fontGroup?.options.find((item) => item.id === state.fonts[fontGroup.id]);
       const color = colorGroup?.options.find((item) => item.id === state.colors[colorGroup.id]);
       layer.textContent = state.texts[input.id]; layer.style.fontFamily = font?.family || "Arial"; layer.style.color = color?.value || "#000";
-      layer.style.fontSize = `${Math.max(10, 28 - Math.max(0, state.texts[input.id].length - 10) * .55)}px`;
+      layer.style.fontSize = textFontSize(input, boxStyles, state.texts[input.id]);
       stage.appendChild(layer);
     }
     if (surface?.maskImage?.url) stage.insertAdjacentHTML("beforeend", `<img alt="" src="${escapeHtml(asset(surface.maskImage.url))}">`);
@@ -88,32 +114,61 @@
       });
     });
   }
+  function controlHeader(item) {
+    return `<div class="amzcustom-title"><span>${escapeHtml(item.label)}</span>${item.required ? '<em>Required</em>' : ""}</div>${item.instructions ? `<p class="amzcustom-help">${escapeHtml(item.instructions)}</p>` : ""}`;
+  }
   function controlHtml(instance, type, item) {
     if (!visible(instance, item)) return "";
     const state = instance.state;
     if (type === "option") {
-      if (item.displayHint === "choice-grid") return `<fieldset class="amzcustom-control" data-id="${item.id}"><legend>${escapeHtml(item.label)}</legend><div class="amzcustom-choices">${item.options.map((option) => `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""}" data-option="${escapeHtml(option.id)}">${option.thumbnailImage ? `<img src="${escapeHtml(option.thumbnailImage.url)}" alt="">` : ""}<span>${escapeHtml(option.label)}${option.cost ? ` (+${option.cost.toLocaleString()} VND)` : ""}</span></button>`).join("")}</div></fieldset>`;
-      return `<div class="amzcustom-control" data-id="${item.id}"><label>${escapeHtml(item.label)}<select>${!item.required ? '<option value="">—</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""}>${escapeHtml(option.label)}${option.cost ? ` (+${option.cost.toLocaleString()} VND)` : ""}</option>`).join("")}</select></label></div>`;
+      const hasImages = item.options.some((option) => option.thumbnailImage || option.overlayImage);
+      if (item.displayHint === "choice-grid" || hasImages) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-choices">${item.options.map((option) => { const img = option.thumbnailImage || option.overlayImage; return `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""}" data-option="${escapeHtml(option.id)}">${img ? `<img src="${escapeHtml(img.url)}" alt="">` : ""}<span>${escapeHtml(option.label)}</span>${option.cost ? `<small>+${formatMoney(option.cost)}</small>` : ""}</button>`; }).join("")}</div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""}>${escapeHtml(option.label)}${option.cost ? ` (+${formatMoney(option.cost)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
-    if (type === "text") return `<div class="amzcustom-control" data-id="${item.id}"><label>${escapeHtml(item.label)}${item.maxLines > 1 ? `<textarea maxlength="${item.maxLength || ""}">${escapeHtml(state.texts[item.id] || "")}</textarea>` : `<input type="text" maxlength="${item.maxLength || ""}" value="${escapeHtml(state.texts[item.id] || "")}">`}</label><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></div>`;
-    if (type === "image") return `<div class="amzcustom-control" data-id="${item.id}"><label>${escapeHtml(item.label)}<input type="file" accept="image/png,image/jpeg,image/webp"></label><label>Zoom <input class="zoom" type="range" min="1" max="3" step=".05" value="${state.imageTransforms[item.id]?.scale || 1}"></label><label>Rotate <input class="rotate" type="range" min="-180" max="180" step="1" value="${state.imageTransforms[item.id]?.rotation || 0}"></label><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></div>`;
-    if (type === "font") return `<div class="amzcustom-control" data-id="${item.id}"><label>${escapeHtml(item.label)}<select>${item.options.map((font) => `<option value="${escapeHtml(font.id)}" ${state.fonts[item.id] === font.id ? "selected" : ""} style="font-family:${escapeHtml(font.family)}">${escapeHtml(font.family)}</option>`).join("")}</select></label></div>`;
-    if (type === "color") return `<div class="amzcustom-control" data-id="${item.id}"><label>${escapeHtml(item.label)}<select>${item.options.map((color) => `<option value="${escapeHtml(color.id)}" ${state.colors[item.id] === color.id ? "selected" : ""}>${escapeHtml(color.name)}</option>`).join("")}</select></label></div>`;
+    if (type === "text") {
+      const value = state.texts[item.id] || "";
+      return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}${item.maxLines > 1 ? `<textarea maxlength="${item.maxLength || ""}" rows="${Math.min(item.maxLines || 3, 5)}">${escapeHtml(value)}</textarea>` : `<input type="text" maxlength="${item.maxLength || ""}" value="${escapeHtml(value)}" placeholder="${escapeHtml(item.placeholder || "")}">`}<div class="amzcustom-meta"><span>${value.length}${item.maxLength ? `/${item.maxLength}` : ""}</span></div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+    }
+    if (type === "image") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<input type="file" accept="image/png,image/jpeg,image/webp"><div class="amzcustom-range"><label>Zoom <input class="zoom" type="range" min=".5" max="3" step=".05" value="${state.imageTransforms[item.id]?.scale || 1}"></label><label>Rotate <input class="rotate" type="range" min="-180" max="180" step="1" value="${state.imageTransforms[item.id]?.rotation || 0}"></label></div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+    if (type === "font") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-fonts">${item.options.map((font) => `<button type="button" class="amzcustom-font ${state.fonts[item.id] === font.id ? "is-selected" : ""}" data-font="${escapeHtml(font.id)}" style="font-family:${escapeHtml(font.family)}">${escapeHtml(font.family)}</button>`).join("")}</div></section>`;
+    if (type === "color") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-swatches">${item.options.map((color) => `<button type="button" class="amzcustom-swatch ${state.colors[item.id] === color.id ? "is-selected" : ""}" data-color="${escapeHtml(color.id)}" style="--swatch:${escapeHtml(color.value || "#fff")}" title="${escapeHtml(color.name)}"><span>${escapeHtml(color.name)}</span></button>`).join("")}</div></section>`;
     return "";
   }
   function renderControls(instance) {
     evaluate(instance);
     const maps = { option:new Map(instance.config.optionGroups.map((x)=>[x.id,x])), text:new Map(instance.config.textInputs.map((x)=>[x.id,x])), image:new Map(instance.config.imageInputs.map((x)=>[x.id,x])), font:new Map(instance.config.fontGroups.map((x)=>[x.id,x])), color:new Map(instance.config.colorGroups.map((x)=>[x.id,x])) };
-    q(instance.modal, ".amzcustom-controls").innerHTML = instance.config.controlOrder.map((entry) => maps[entry.type]?.get(entry.id) ? controlHtml(instance, entry.type, maps[entry.type].get(entry.id)) : "").join("");
+    const seen = new Set();
+    let html = "";
+    for (const entry of instance.config.controlOrder || []) {
+      const item = maps[entry.type]?.get(entry.id);
+      const key = `${entry.type}:${entry.id}`;
+      if (item && !seen.has(key)) { html += controlHtml(instance, entry.type, item); seen.add(key); }
+    }
+    for (const type of ["option", "text", "image", "font", "color"]) for (const item of maps[type].values()) {
+      const key = `${type}:${item.id}`;
+      if (!seen.has(key)) html += controlHtml(instance, type, item);
+    }
+    q(instance.modal, ".amzcustom-controls").innerHTML = html;
     bindControls(instance); renderPreview(instance);
   }
   function fileData(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); }
   function bindControls(instance) {
-    q(instance.modal, ".amzcustom-controls").addEventListener("click", (event) => { const button = event.target.closest("[data-option]"); if (!button) return; instance.state.options[button.closest("[data-id]").dataset.id] = button.dataset.option; renderControls(instance); });
+    if (instance.controlsBound) return;
+    instance.controlsBound = true;
+    q(instance.modal, ".amzcustom-controls").addEventListener("click", (event) => {
+      const option = event.target.closest("[data-option]"), font = event.target.closest("[data-font]"), color = event.target.closest("[data-color]");
+      const button = option || font || color; if (!button) return;
+      const id = button.closest("[data-id]").dataset.id;
+      if (option) instance.state.options[id] = option.dataset.option;
+      if (font) instance.state.fonts[id] = font.dataset.font;
+      if (color) instance.state.colors[id] = color.dataset.color;
+      renderControls(instance);
+    });
     q(instance.modal, ".amzcustom-controls").addEventListener("input", async (event) => {
       const group = event.target.closest("[data-id]"); if (!group) return; const id = group.dataset.id;
-      if (event.target.matches('input[type="text"],textarea')) instance.state.texts[id] = event.target.value.split(/\r?\n/).slice(0, instance.config.textInputs.find((x)=>x.id===id)?.maxLines || 99).join("\n");
-      if (event.target.matches('input[type="file"]') && event.target.files[0]) instance.state.images[id] = { file:event.target.files[0], dataUrl:await fileData(event.target.files[0]) };
+      const textInput = instance.config.textInputs.find((x)=>x.id===id);
+      if (event.target.matches('input[type="text"],textarea')) { instance.state.texts[id] = normalizeText(event.target.value, textInput || {}); event.target.value = instance.state.texts[id]; }
+      if (event.target.matches('input[type="file"]') && event.target.files[0]) { instance.state.images[id] = { file:event.target.files[0], dataUrl:await fileData(event.target.files[0]) }; instance.state.imageTransforms[id] ||= { x:0, y:0, scale:1, rotation:0 }; }
       if (event.target.matches(".zoom")) (instance.state.imageTransforms[id] ||= {}).scale = Number(event.target.value);
       if (event.target.matches(".rotate")) (instance.state.imageTransforms[id] ||= {}).rotation = Number(event.target.value);
       if (event.target.matches("select")) { if (instance.config.optionGroups.some((x)=>x.id===id)) instance.state.options[id] = event.target.value; else if (instance.config.fontGroups.some((x)=>x.id===id)) instance.state.fonts[id] = event.target.value; else instance.state.colors[id] = event.target.value; }
@@ -123,7 +178,15 @@
   function validate(instance) {
     const errors = {};
     for (const group of instance.config.optionGroups) if (visible(instance, group) && group.required && !instance.state.options[group.id]) errors[group.id] = "Vui lòng chọn một tùy chọn.";
-    for (const input of instance.config.textInputs) { const value = instance.state.texts[input.id] || ""; if (visible(instance,input) && input.required && !value.trim()) errors[input.id] = "Bắt buộc."; else if (value.length < input.minLength) errors[input.id] = `Tối thiểu ${input.minLength} ký tự.`; }
+    for (const input of instance.config.textInputs) {
+      const value = instance.state.texts[input.id] || "";
+      if (!visible(instance,input)) continue;
+      if (input.required && !value.trim()) errors[input.id] = "This field is required.";
+      else if (value && value.length < input.minLength) errors[input.id] = `Enter at least ${input.minLength} characters.`;
+      else if (value && input.regexChoice && instance.config.regexChoices?.[input.regexChoice]?.pattern) {
+        try { if (!new RegExp(`^(?:${instance.config.regexChoices[input.regexChoice].pattern})$`).test(value)) errors[input.id] = instance.config.regexChoices[input.regexChoice].instructions || "Use only supported characters."; } catch {}
+      }
+    }
     for (const input of instance.config.imageInputs) if (visible(instance,input) && input.required && !instance.state.images[input.id]) errors[input.id] = "Bắt buộc tải ảnh.";
     instance.state.errors = errors; return !Object.keys(errors).length;
   }
@@ -145,7 +208,7 @@
       const childRect=child.getBoundingClientRect(), x=(childRect.left-rect.left)/rect.width*size, y=(childRect.top-rect.top)/rect.height*size, width=childRect.width/rect.width*size, height=childRect.height/rect.height*size;
       if (child.tagName === "IMG") { const image=await loadCanvasImage(child.src); context.drawImage(image,x,y,width,height); continue; }
       const inner=child.querySelector("img");
-      if (inner) { const image=await loadCanvasImage(inner.src); const transform=inner.style.transform.match(/scale\(([^)]+)\).*rotate\(([-\d.]+)deg\)/); const scale=Number(transform?.[1]||1), rotation=Number(transform?.[2]||0)*Math.PI/180; context.save(); context.beginPath(); context.rect(x,y,width,height); context.clip(); context.translate(x+width/2,y+height/2); context.rotate(rotation); context.drawImage(image,-width*scale/2,-height*scale/2,width*scale,height*scale); context.restore(); }
+      if (inner) { const image=await loadCanvasImage(inner.src); const transform=inner.style.transform.match(/translate\(([-\d.]+)%.*,([-\d.]+)%\).*scale\(([^)]+)\).*rotate\(([-\d.]+)deg\)/); const tx=Number(transform?.[1]||0)/100*width, ty=Number(transform?.[2]||0)/100*height, scale=Number(transform?.[3]||1), rotation=Number(transform?.[4]||0)*Math.PI/180; context.save(); context.beginPath(); context.rect(x,y,width,height); context.clip(); context.translate(x+width/2+tx,y+height/2+ty); context.rotate(rotation); context.drawImage(image,-width*scale/2,-height*scale/2,width*scale,height*scale); context.restore(); }
       else { const style=getComputedStyle(child); context.fillStyle=style.color; context.font=`${Math.max(12,parseFloat(style.fontSize)/rect.width*size)}px ${style.fontFamily}`; context.textAlign="center"; context.textBaseline="middle"; const lines=child.textContent.split(/\r?\n/); lines.forEach((line,index)=>context.fillText(line,x+width/2,y+height/2+(index-(lines.length-1)/2)*32,width)); }
     }
     return canvas.toDataURL("image/png",.92);
@@ -175,7 +238,7 @@
     const config = parseConfig(root); if (!config || instances.has(root)) return;
     for(const group of config.fontGroups||[])for(const font of group.options||[]){if(!font.fontUrl)continue;const style=document.createElement("style");style.textContent=`@font-face{font-family:${JSON.stringify(font.family)};src:url(${JSON.stringify(font.fontUrl)});font-display:swap}`;document.head.appendChild(style);}
     const modal = document.createElement("div"); modal.className="amzcustom-modal"; modal.hidden=true;
-    modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><strong class="amzcustom-price"></strong><button class="amzcustom-add">Add customized item</button></footer></section>`;
+    modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><strong class="amzcustom-price"></strong><button class="amzcustom-add">Add customized item</button></footer></section>`;
     document.body.appendChild(modal); const instance={root,modal,config,state:initialState(config)}; instances.set(root,instance);
     q(root,".amzcustom-open").addEventListener("click",()=>{ modal.hidden=false; document.body.classList.add("amzcustom-locked"); renderControls(instance); });
     const close=()=>{modal.hidden=true;document.body.classList.remove("amzcustom-locked");}; q(modal,".amzcustom-close").addEventListener("click",close); q(modal,".amzcustom-backdrop").addEventListener("click",close); q(modal,".amzcustom-add").addEventListener("click",()=>finish(instance));

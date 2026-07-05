@@ -10,10 +10,14 @@
   }
   function initialState(config) {
     const options = {}, fonts = {}, colors = {};
-    for (const group of config.optionGroups || []) options[group.id] = group.defaultOptionId || (group.required && group.options[0] && group.options[0].id) || "";
+    for (const group of config.optionGroups || []) {
+      const fallback = (group.options || []).find((option) => !option.outOfStock) || group.options[0];
+      const defaultOption = (group.options || []).find((option) => option.id === group.defaultOptionId && !option.outOfStock);
+      options[group.id] = (defaultOption && defaultOption.id) || (group.required && fallback && fallback.id) || "";
+    }
     for (const group of config.fontGroups || []) fonts[group.id] = group.defaultFontId || (group.options[0] && group.options[0].id) || "";
     for (const group of config.colorGroups || []) colors[group.id] = group.defaultColorId || (group.options[0] && group.options[0].id) || "";
-    return { options, fonts, colors, texts: {}, images: {}, imageTransforms: {}, placementOffsets: {}, visible: {}, errors: {} };
+    return { options, fonts, colors, texts: {}, images: {}, imageTransforms: {}, textTransforms: {}, placementOffsets: {}, visible: {}, errors: {}, activeEdit: "" };
   }
   function formatMoney(value) { return `${Number(value || 0).toLocaleString()} VND`; }
   function activeStyleGroup(instance, item, groups) {
@@ -38,6 +42,11 @@
     const lines = String(value || "").split(/\r?\n/);
     const longest = lines.reduce((max, line) => Math.max(max, line.length), 1);
     return `${Math.max(10, Math.min(34, height * 2.7, width * 1.55 / Math.max(1, longest * 0.08)))}px`;
+  }
+  function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+  function transformStyle(transform) {
+    const item = transform || {};
+    return `translate(${item.x || 0}%,${item.y || 0}%) scale(${item.scale || 1}) rotate(${item.rotation || 0}deg)`;
   }
   function evaluate(instance) {
     const state = instance.state;
@@ -81,21 +90,24 @@
     }
     for (const input of config.imageInputs || []) {
       if (!visible(instance, input) || !state.images[input.id]) continue;
-      const layer = document.createElement("div"); layer.className = "amzcustom-layer"; layer.dataset.placementId=input.placementId||""; setBox(layer, box(config, input.placementId, state));
-      layer.dataset.editId = `image:${input.id}`;
+      const editId = `image:${input.id}`;
+      const layer = document.createElement("div"); layer.className = `amzcustom-layer ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, box(config, input.placementId, state));
       const transform = state.imageTransforms[input.id] || { x: 0, y: 0, scale: 1, rotation: 0 };
-      layer.innerHTML = `<img alt="" src="${escapeHtml(state.images[input.id].dataUrl)}" style="transform:translate(${transform.x || 0}%,${transform.y || 0}%) scale(${transform.scale || 1}) rotate(${transform.rotation || 0}deg)">`;
+      layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="transform:${transformStyle(transform)}"><img alt="" src="${escapeHtml(state.images[input.id].dataUrl)}"></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box" style="transform:${transformStyle(transform)}"><div class="amzcustom-layer-tools"><button type="button" data-layer-action="edit">Edit</button><button type="button" data-layer-action="replace">Replace</button><button type="button" data-layer-action="delete">Delete</button></div><button type="button" class="amzcustom-rotate-handle" data-transform-handle="rotate" aria-label="Rotate"></button><button type="button" class="amzcustom-resize-handle nw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle ne" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle sw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle se" data-transform-handle="resize" aria-label="Resize"></button></div>` : ""}`;
       stage.appendChild(layer);
     }
     for (const input of config.textInputs || []) {
       if (!visible(instance, input) || !state.texts[input.id]) continue;
       const boxStyles = box(config, input.placementId, state);
-      const layer = document.createElement("div"); layer.className = "amzcustom-layer amzcustom-text-layer"; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = `text:${input.id}`; setBox(layer, boxStyles);
+      const editId = `text:${input.id}`;
+      const layer = document.createElement("div"); layer.className = `amzcustom-layer amzcustom-text-layer ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, boxStyles);
       const fontGroup = activeStyleGroup(instance, input, config.fontGroups || []);
       const colorGroup = activeStyleGroup(instance, input, config.colorGroups || []);
       const font = fontGroup?.options.find((item) => item.id === state.fonts[fontGroup.id]);
       const color = colorGroup?.options.find((item) => item.id === state.colors[colorGroup.id]);
-      layer.textContent = state.texts[input.id]; layer.style.fontFamily = font?.family || "Arial"; layer.style.color = color?.value || "#000";
+      const transform = state.textTransforms[input.id] || { x: 0, y: 0 };
+      layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="transform:${transformStyle({ ...transform, scale: 1, rotation: 0 })}"><span>${escapeHtml(state.texts[input.id])}</span></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box" style="transform:${transformStyle({ ...transform, scale: 1, rotation: 0 })}"><div class="amzcustom-layer-tools"><button type="button" data-layer-action="edit">Edit</button><button type="button" data-layer-action="delete">Delete</button></div></div>` : ""}`;
+      layer.style.fontFamily = font?.family || "Arial"; layer.style.color = color?.value || "#000";
       layer.style.fontSize = textFontSize(input, boxStyles, state.texts[input.id]);
       stage.appendChild(layer);
     }
@@ -105,12 +117,11 @@
   }
   function bindPreviewDrag(instance) {
     const stage=q(instance.modal,".amzcustom-stage"), size=instance.config.product.previewSize||400;
-    stage.querySelectorAll(".amzcustom-layer[data-placement-id]").forEach((layer)=>{
-      const placement=(instance.config.placements||[]).find((item)=>item.id===layer.dataset.placementId); if(!placement?.isFreePlacement)return;
+    stage.querySelectorAll(".amzcustom-layer[data-edit-id]").forEach((layer)=>{
       layer.style.cursor="move";
-      layer.addEventListener("pointerdown",(event)=>{event.preventDefault();layer.setPointerCapture(event.pointerId);const start={x:event.clientX,y:event.clientY},original={...(instance.state.placementOffsets[placement.id]||{x:0,y:0})};
-        const move=(next)=>{const scale=size/stage.getBoundingClientRect().width;const x=original.x+(next.clientX-start.x)*scale,y=original.y+(next.clientY-start.y)*scale;instance.state.placementOffsets[placement.id]={x,y};layer.style.transform=`translate(${next.clientX-start.x}px,${next.clientY-start.y}px)`;};
-        const up=()=>{layer.removeEventListener("pointermove",move);layer.removeEventListener("pointerup",up);renderPreview(instance);};layer.addEventListener("pointermove",move);layer.addEventListener("pointerup",up);
+      layer.addEventListener("pointerdown",(event)=>{ if (event.target.closest("[data-layer-action]")) return; event.preventDefault(); instance.state.activeEdit = layer.dataset.editId; const [type,id]=layer.dataset.editId.split(":"); const start={x:event.clientX,y:event.clientY}; const rect=layer.getBoundingClientRect(); const box=layer.querySelector(".amzcustom-edit-box") || layer.querySelector(".amzcustom-transform-box"); const boxRect=box.getBoundingClientRect(); const bucket=type==="image"?instance.state.imageTransforms:instance.state.textTransforms; const original={x:0,y:0,scale:1,rotation:0,...(bucket[id]||{})}; const center={x:boxRect.left+boxRect.width/2,y:boxRect.top+boxRect.height/2}; const startDistance=Math.hypot(start.x-center.x,start.y-center.y)||1; const startAngle=Math.atan2(start.y-center.y,start.x-center.x)*180/Math.PI; const handle=event.target.closest("[data-transform-handle]")?.dataset.transformHandle || "move";
+        const move=(next)=>{ if (handle==="resize") { const distance=Math.hypot(next.clientX-center.x,next.clientY-center.y)||1; bucket[id]={...original,scale:clamp(original.scale*distance/startDistance,.3,4)}; } else if (handle==="rotate") { const angle=Math.atan2(next.clientY-center.y,next.clientX-center.x)*180/Math.PI; bucket[id]={...original,rotation:Math.round(original.rotation+angle-startAngle)}; } else { const dx=(next.clientX-start.x)/rect.width*100, dy=(next.clientY-start.y)/rect.height*100; bucket[id]={...original,x:clamp(original.x+dx,-50,50),y:clamp(original.y+dy,-50,50)}; } layer.querySelectorAll(".amzcustom-transform-box,.amzcustom-edit-box").forEach((item)=>{ item.style.transform=transformStyle(bucket[id]); });};
+        const up=()=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);renderPreview(instance);};window.addEventListener("pointermove",move);window.addEventListener("pointerup",up);
       });
     });
   }
@@ -122,14 +133,14 @@
     const state = instance.state;
     if (type === "option") {
       const hasImages = item.options.some((option) => option.thumbnailImage || option.overlayImage);
-      if (item.displayHint === "choice-grid" || hasImages) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-choices">${item.options.map((option) => { const img = option.thumbnailImage || option.overlayImage; return `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""}" data-option="${escapeHtml(option.id)}">${img ? `<img src="${escapeHtml(img.url)}" alt="">` : ""}<span>${escapeHtml(option.label)}</span>${option.cost ? `<small>+${formatMoney(option.cost)}</small>` : ""}</button>`; }).join("")}</div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
-      return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""}>${escapeHtml(option.label)}${option.cost ? ` (+${formatMoney(option.cost)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      if (item.displayHint === "choice-grid" || hasImages) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-choices">${item.options.map((option) => { const img = option.thumbnailImage || option.overlayImage; return `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-stock-icon"></span>`}<span>${escapeHtml(option.label)}</span>${option.outOfStock ? "<small>Out of stock</small>" : option.cost ? `<small>+${formatMoney(option.cost)}</small>` : ""}</button>`; }).join("")}</div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(option.cost)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
     if (type === "text") {
       const value = state.texts[item.id] || "";
       return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}${item.maxLines > 1 ? `<textarea maxlength="${item.maxLength || ""}" rows="${Math.min(item.maxLines || 3, 5)}">${escapeHtml(value)}</textarea>` : `<input type="text" maxlength="${item.maxLength || ""}" value="${escapeHtml(value)}" placeholder="${escapeHtml(item.placeholder || "")}">`}<div class="amzcustom-meta"><span>${value.length}${item.maxLength ? `/${item.maxLength}` : ""}</span></div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
-    if (type === "image") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<input type="file" accept="image/png,image/jpeg,image/webp"><div class="amzcustom-range"><label>Zoom <input class="zoom" type="range" min=".5" max="3" step=".05" value="${state.imageTransforms[item.id]?.scale || 1}"></label><label>Rotate <input class="rotate" type="range" min="-180" max="180" step="1" value="${state.imageTransforms[item.id]?.rotation || 0}"></label></div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+    if (type === "image") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<input class="amzcustom-file ${state.images[item.id] ? "is-hidden" : ""}" type="file" accept="image/png,image/jpeg,image/webp">${state.images[item.id] ? `<div class="amzcustom-upload-row"><img src="${escapeHtml(state.images[item.id].dataUrl)}" alt=""><div class="amzcustom-actions"><button type="button" data-image-action="edit">Edit</button><button type="button" data-image-action="replace">Replace</button><button type="button" data-image-action="delete">Delete</button></div></div>` : ""}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     if (type === "font") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-fonts">${item.options.map((font) => `<button type="button" class="amzcustom-font ${state.fonts[item.id] === font.id ? "is-selected" : ""}" data-font="${escapeHtml(font.id)}" style="font-family:${escapeHtml(font.family)}">${escapeHtml(font.family)}</button>`).join("")}</div></section>`;
     if (type === "color") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-swatches">${item.options.map((color) => `<button type="button" class="amzcustom-swatch ${state.colors[item.id] === color.id ? "is-selected" : ""}" data-color="${escapeHtml(color.id)}" style="--swatch:${escapeHtml(color.value || "#fff")}" title="${escapeHtml(color.name)}"><span>${escapeHtml(color.name)}</span></button>`).join("")}</div></section>`;
     return "";
@@ -157,9 +168,23 @@
     instance.controlsBound = true;
     q(instance.modal, ".amzcustom-controls").addEventListener("click", (event) => {
       const option = event.target.closest("[data-option]"), font = event.target.closest("[data-font]"), color = event.target.closest("[data-color]");
+      const imageAction = event.target.closest("[data-image-action]"), layerAction = event.target.closest("[data-layer-action]");
+      if (imageAction) {
+        const id = imageAction.closest("[data-id]").dataset.id;
+        if (imageAction.dataset.imageAction === "edit") instance.state.activeEdit = `image:${id}`;
+        if (imageAction.dataset.imageAction === "replace") imageAction.closest("[data-id]").querySelector(".amzcustom-file").click();
+        if (imageAction.dataset.imageAction === "delete") { delete instance.state.images[id]; delete instance.state.imageTransforms[id]; if (instance.state.activeEdit === `image:${id}`) instance.state.activeEdit = ""; }
+        renderControls(instance); return;
+      }
+      if (layerAction) {
+        const layer = layerAction.closest("[data-edit-id]"), [type,id] = layer.dataset.editId.split(":");
+        if (layerAction.dataset.layerAction === "delete") { if (type === "image") { delete instance.state.images[id]; delete instance.state.imageTransforms[id]; } else { instance.state.texts[id] = ""; delete instance.state.textTransforms[id]; } instance.state.activeEdit = ""; renderControls(instance); }
+        if (layerAction.dataset.layerAction === "replace") q(instance.modal, `[data-id="${CSS.escape(id)}"] .amzcustom-file`)?.click();
+        return;
+      }
       const button = option || font || color; if (!button) return;
       const id = button.closest("[data-id]").dataset.id;
-      if (option) instance.state.options[id] = option.dataset.option;
+      if (option && !option.disabled) instance.state.options[id] = option.dataset.option;
       if (font) instance.state.fonts[id] = font.dataset.font;
       if (color) instance.state.colors[id] = color.dataset.color;
       renderControls(instance);
@@ -167,12 +192,10 @@
     q(instance.modal, ".amzcustom-controls").addEventListener("input", async (event) => {
       const group = event.target.closest("[data-id]"); if (!group) return; const id = group.dataset.id;
       const textInput = instance.config.textInputs.find((x)=>x.id===id);
-      if (event.target.matches('input[type="text"],textarea')) { instance.state.texts[id] = normalizeText(event.target.value, textInput || {}); event.target.value = instance.state.texts[id]; }
-      if (event.target.matches('input[type="file"]') && event.target.files[0]) { instance.state.images[id] = { file:event.target.files[0], dataUrl:await fileData(event.target.files[0]) }; instance.state.imageTransforms[id] ||= { x:0, y:0, scale:1, rotation:0 }; }
-      if (event.target.matches(".zoom")) (instance.state.imageTransforms[id] ||= {}).scale = Number(event.target.value);
-      if (event.target.matches(".rotate")) (instance.state.imageTransforms[id] ||= {}).rotation = Number(event.target.value);
+      if (event.target.matches('input[type="text"],textarea')) { instance.state.texts[id] = normalizeText(event.target.value, textInput || {}); event.target.value = instance.state.texts[id]; const meta=group.querySelector(".amzcustom-meta span"); if(meta) meta.textContent = `${instance.state.texts[id].length}${textInput?.maxLength ? `/${textInput.maxLength}` : ""}`; evaluate(instance); renderPreview(instance); return; }
+      if (event.target.matches('input[type="file"]') && event.target.files[0]) { instance.state.images[id] = { file:event.target.files[0], dataUrl:await fileData(event.target.files[0]) }; instance.state.imageTransforms[id] ||= { x:0, y:0, scale:1, rotation:0 }; instance.state.activeEdit = `image:${id}`; }
       if (event.target.matches("select")) { if (instance.config.optionGroups.some((x)=>x.id===id)) instance.state.options[id] = event.target.value; else if (instance.config.fontGroups.some((x)=>x.id===id)) instance.state.fonts[id] = event.target.value; else instance.state.colors[id] = event.target.value; }
-      evaluate(instance); renderPreview(instance);
+      evaluate(instance); renderControls(instance);
     });
   }
   function validate(instance) {
@@ -208,8 +231,8 @@
       const childRect=child.getBoundingClientRect(), x=(childRect.left-rect.left)/rect.width*size, y=(childRect.top-rect.top)/rect.height*size, width=childRect.width/rect.width*size, height=childRect.height/rect.height*size;
       if (child.tagName === "IMG") { const image=await loadCanvasImage(child.src); context.drawImage(image,x,y,width,height); continue; }
       const inner=child.querySelector("img");
-      if (inner) { const image=await loadCanvasImage(inner.src); const transform=inner.style.transform.match(/translate\(([-\d.]+)%.*,([-\d.]+)%\).*scale\(([^)]+)\).*rotate\(([-\d.]+)deg\)/); const tx=Number(transform?.[1]||0)/100*width, ty=Number(transform?.[2]||0)/100*height, scale=Number(transform?.[3]||1), rotation=Number(transform?.[4]||0)*Math.PI/180; context.save(); context.beginPath(); context.rect(x,y,width,height); context.clip(); context.translate(x+width/2+tx,y+height/2+ty); context.rotate(rotation); context.drawImage(image,-width*scale/2,-height*scale/2,width*scale,height*scale); context.restore(); }
-      else { const style=getComputedStyle(child); context.fillStyle=style.color; context.font=`${Math.max(12,parseFloat(style.fontSize)/rect.width*size)}px ${style.fontFamily}`; context.textAlign="center"; context.textBaseline="middle"; const lines=child.textContent.split(/\r?\n/); lines.forEach((line,index)=>context.fillText(line,x+width/2,y+height/2+(index-(lines.length-1)/2)*32,width)); }
+      if (inner) { const image=await loadCanvasImage(inner.src); const transform=(child.querySelector(".amzcustom-transform-box") || inner).style.transform.match(/translate\(([-\d.]+)%.*,([-\d.]+)%\).*scale\(([^)]+)\).*rotate\(([-\d.]+)deg\)/); const tx=Number(transform?.[1]||0)/100*width, ty=Number(transform?.[2]||0)/100*height, scale=Number(transform?.[3]||1), rotation=Number(transform?.[4]||0)*Math.PI/180; context.save(); context.beginPath(); context.rect(x,y,width,height); context.clip(); context.translate(x+width/2+tx,y+height/2+ty); context.rotate(rotation); context.drawImage(image,-width*scale/2,-height*scale/2,width*scale,height*scale); context.restore(); }
+      else { const textNode=child.querySelector("span") || child; const style=getComputedStyle(child); const textRect=textNode.getBoundingClientRect(); const tx=(textRect.left-childRect.left)/rect.width*size, ty=(textRect.top-childRect.top)/rect.height*size; context.fillStyle=style.color; context.font=`${Math.max(12,parseFloat(style.fontSize)/rect.width*size)}px ${style.fontFamily}`; context.textAlign="center"; context.textBaseline="middle"; const lines=textNode.textContent.split(/\r?\n/); lines.forEach((line,index)=>context.fillText(line,x+tx+width/2,y+ty+height/2+(index-(lines.length-1)/2)*32,width)); }
     }
     return canvas.toDataURL("image/png",.92);
   }
@@ -221,7 +244,7 @@
       for (const [id, value] of Object.entries(instance.state.images)) uploadedImages[id] = await upload(instance, value.dataUrl);
       const previewFile=await upload(instance,await previewDataUrl(instance));
       const customizationId = crypto.randomUUID();
-      const manifest = { customizationId, schemaVersion:instance.config.schemaVersion, productId:instance.root.dataset.productId, variantId:instance.root.dataset.variantId, preview:previewFile, selections:{ options:instance.state.options, texts:instance.state.texts, fonts:instance.state.fonts, colors:instance.state.colors, images:uploadedImages, imageTransforms:instance.state.imageTransforms, placementOffsets:instance.state.placementOffsets }, surcharge:surcharge(instance), createdAt:new Date().toISOString() };
+      const manifest = { customizationId, schemaVersion:instance.config.schemaVersion, productId:instance.root.dataset.productId, variantId:instance.root.dataset.variantId, preview:previewFile, selections:{ options:instance.state.options, texts:instance.state.texts, fonts:instance.state.fonts, colors:instance.state.colors, images:uploadedImages, imageTransforms:instance.state.imageTransforms, textTransforms:instance.state.textTransforms, placementOffsets:instance.state.placementOffsets }, surcharge:surcharge(instance), createdAt:new Date().toISOString() };
       const manifestUrl = `data:application/json;base64,${btoa(unescape(encodeURIComponent(JSON.stringify(manifest))))}`;
       const manifestFile = await upload(instance, manifestUrl);
       const summary = Object.values(instance.state.texts).filter(Boolean).join(" | ").slice(0, 220) || "Customized product";

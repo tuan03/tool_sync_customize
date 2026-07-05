@@ -12,8 +12,26 @@
 .amzcustom-stage { position: relative; width: min(100%,620px); aspect-ratio: 1; margin: auto; overflow: hidden; background: #f3f3f3; border: 1px solid #d5d9d9; }
 .amzcustom-stage > img, .amzcustom-layer { position: absolute; object-fit: contain; }
 .amzcustom-stage > img { inset: 0; width: 100%; height: 100%; }
-.amzcustom-layer { overflow: hidden; display: grid; place-items: center; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.18; touch-action: none; }
+.amzcustom-layer { overflow: visible; display: grid; place-items: center; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.18; touch-action: none; }
+.amzcustom-layer::before { content: ""; position: absolute; inset: 0; border: 1px dashed rgba(0,113,133,.5); pointer-events: none; }
+.amzcustom-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.amzcustom-transform-box,
+.amzcustom-edit-box { position: absolute; inset: 0; transform-origin: center; overflow: visible; display: grid; place-items: center; }
 .amzcustom-layer img { width: 100%; height: 100%; object-fit: cover; transform-origin: center; }
+.amzcustom-layer span { display: inline-block; transform-origin: center; }
+.amzcustom-layer.is-active-edit .amzcustom-edit-box::after { content: ""; position: absolute; inset: 0; border: 2px dashed #ff9900; pointer-events: none; }
+.amzcustom-layer-tools { position: absolute; top: -72px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; border-radius: 4px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+.amzcustom-layer-tools button { min-height: 30px; border: 0; border-right: 1px solid #b8b8b8; background: #e5e5e5; color: #111; padding: 0 10px; cursor: pointer; }
+.amzcustom-layer-tools button:last-child { border-right: 0; }
+.amzcustom-resize-handle,
+.amzcustom-rotate-handle { position: absolute; z-index: 4; border: 2px solid #ff9900; background: #111; padding: 0; }
+.amzcustom-resize-handle { width: 16px; height: 16px; }
+.amzcustom-resize-handle.nw { left: -8px; top: -8px; cursor: nwse-resize; }
+.amzcustom-resize-handle.ne { right: -8px; top: -8px; cursor: nesw-resize; }
+.amzcustom-resize-handle.sw { left: -8px; bottom: -8px; cursor: nesw-resize; }
+.amzcustom-resize-handle.se { right: -8px; bottom: -8px; cursor: nwse-resize; }
+.amzcustom-rotate-handle { width: 18px; height: 18px; left: 50%; top: -34px; transform: translateX(-50%); border-radius: 50%; cursor: grab; z-index: 6; }
+.amzcustom-rotate-handle::after { content: ""; position: absolute; left: 50%; top: 16px; width: 2px; height: 18px; background: #ff9900; transform: translateX(-50%); }
 .amzcustom-controls { display: grid; gap: 0; border: 1px solid #e3e6e6; border-radius: 6px; }
 .amzcustom-control { display: grid; gap: 8px; padding: 14px; border-bottom: 1px solid #e3e6e6; }
 .amzcustom-control:last-child { border-bottom: 0; }
@@ -26,9 +44,13 @@
 .amzcustom-choices { display: grid; grid-template-columns: repeat(auto-fill,minmax(92px,1fr)); gap: 8px; max-height: 380px; overflow: auto; padding: 2px; }
 .amzcustom-choice { min-height: 92px; padding: 7px; border: 1px solid #d5d9d9; border-radius: 4px; background: white; color: #111; cursor: pointer; display: grid; gap: 6px; align-content: start; text-align: left; }
 .amzcustom-choice.is-selected { border-color: #007185; box-shadow: 0 0 0 2px #c8f3fa; }
+.amzcustom-choice.is-out { opacity: .55; cursor: not-allowed; position: relative; background: #f7f7f7; }
+.amzcustom-choice.is-out::after { content: ""; position: absolute; inset: 8px; background: linear-gradient(to bottom right, transparent calc(50% - 1px), #b12704 50%, transparent calc(50% + 1px)); pointer-events: none; }
 .amzcustom-choice img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #f7fafa; border: 1px solid #eef0f0; }
 .amzcustom-choice span { font-size: 12px; line-height: 1.25; }
 .amzcustom-choice small { color: #565959; font-size: 11px; }
+.amzcustom-stock-icon { display: grid; place-items: center; width: 100%; aspect-ratio: 1; background: #fff4f2; border: 1px solid #f3c0b8; border-radius: 4px; }
+.amzcustom-stock-icon::before { content: "!"; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: #b12704; color: #fff; font-weight: 800; }
 .amzcustom-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
 .amzcustom-swatch { width: 38px; height: 38px; border: 1px solid #8d9096; border-radius: 50%; background: var(--swatch); cursor: pointer; color: transparent; overflow: hidden; }
 .amzcustom-swatch.is-selected { box-shadow: 0 0 0 3px #c8f3fa; border-color: #007185; }
@@ -36,8 +58,11 @@
 .amzcustom-fonts { display: grid; grid-template-columns: repeat(auto-fill,minmax(130px,1fr)); gap: 8px; max-height: 230px; overflow: auto; padding: 2px; }
 .amzcustom-font { min-height: 38px; padding: 6px 9px; border: 1px solid #d5d9d9; border-radius: 4px; background: #fff; color: #111; cursor: pointer; text-align: left; font-size: 17px; line-height: 1.1; }
 .amzcustom-font.is-selected { border-color: #007185; box-shadow: 0 0 0 2px #c8f3fa; }
-.amzcustom-range { display: grid; gap: 8px; }
-.amzcustom-range label { display: grid; grid-template-columns: 56px 1fr; gap: 10px; align-items: center; color: #565959; font-size: 13px; }
+.amzcustom-file.is-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.amzcustom-upload-row { display: grid; grid-template-columns: 72px 1fr; gap: 18px; align-items: center; }
+.amzcustom-upload-row img { width: 72px; height: 72px; object-fit: cover; border: 1px solid #d5d9d9; border-radius: 4px; }
+.amzcustom-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.amzcustom-actions button { min-height: 34px; border: 1px solid #d5d9d9; border-radius: 4px; background: #fff; color: #111; padding: 0 12px; cursor: pointer; }
 .amzcustom-foot { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 14px 20px; border-top: 1px solid #ddd; background: #fff; }
 .amzcustom-add { min-width: 190px; min-height: 46px; border: 1px solid #fcd200; border-radius: 999px; background: #ffd814; color: #111; font-weight: 800; cursor: pointer; }
 .amzcustom-error { color: #b42318; font-size: 13px; }

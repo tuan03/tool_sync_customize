@@ -1,0 +1,393 @@
+HƯỚNG DẪN CÀI VÀ TEST AMAZON CUSTOMIZER TRÊN SHOPIFY
+====================================================
+
+1. YÊU CẦU
+-----------
+
+- Node.js và npm.
+- Shopify CLI đã đăng nhập.
+- Custom app đã được tạo và liên kết với store.
+- Store mẫu hiện tại: nattest-21rymaaa.myshopify.com.
+- Cloudflared để tạo URL HTTPS cho backend local.
+
+
+2. CẤU HÌNH .env.shopify
+------------------------
+
+Tạo file .env.shopify ở thư mục gốc project và điền:
+
+SHOPIFY_SHOP="your-store.myshopify.com"
+SHOPIFY_CLIENT_ID="client-id-cua-app"
+SHOPIFY_CLIENT_SECRET="client-secret-cua-app"
+SHOPIFY_ACCESS_TOKEN="admin-api-access-token"
+SHOPIFY_API_VERSION="2026-04"
+CUSTOMIZER_ADMIN_SECRET="chuoi-bi-mat-dung-cho-trang-sync"
+CUSTOMIZER_CRON_SECRET="chuoi-bi-mat-khac-dung-cho-cleanup"
+PORT="3000"
+
+Không commit file .env.shopify và không gửi token/secret cho người khác.
+
+
+2A. CẤU HÌNH ACCESS SCOPES CẦN THIẾT
+------------------------------------
+
+App cần các Admin API scopes tối thiểu sau:
+
+read_products
+write_products
+read_files
+write_files
+read_publications
+write_publications
+write_app_proxy
+read_validations
+write_validations
+
+Ý nghĩa:
+
+- read_products, write_products: đọc product, tạo metafield definition, ghi custom.amazon_customizer và tạo/cập nhật sản phẩm phụ phí.
+- read_files, write_files: upload asset Amazon, ảnh khách, preview, manifest và xóa file hết hạn.
+- read_publications, write_publications: publish sản phẩm Customization Add-on lên Online Store để có thể thêm vào cart.
+- write_app_proxy: cấu hình đường dẫn /apps/amazon-customizer/upload.
+- read_validations, write_validations: tạo và quản lý Cart/Checkout Validation Function.
+
+Không xin các scope orders/customers nếu chưa có tính năng thực sự cần dùng. Giữ quyền ở mức tối thiểu.
+
+
+TRƯỜNG HỢP A: APP ĐƯỢC QUẢN LÝ BẰNG SHOPIFY CLI / DEV DASHBOARD
+
+Trong shopify.app.toml phải có:
+
+[access_scopes]
+scopes = "read_products,write_products,read_files,write_files,read_publications,write_publications,write_app_proxy,read_validations,write_validations"
+optional_scopes = []
+use_legacy_install_flow = false
+
+Sau khi sửa scope, chạy:
+
+shopify app deploy --allow-updates
+
+Deploy scope mới chưa đảm bảo installation cũ đã cấp quyền. Nếu CLI hoặc Shopify Admin báo cần cập nhật quyền:
+
+1. Mở link cài đặt/cập nhật app do Shopify CLI cung cấp.
+2. Chọn đúng store.
+3. Bấm Update/Install để chấp nhận scope mới.
+4. Nếu app vẫn dùng token cũ không đủ quyền, cài lại app hoặc lấy token mới rồi cập nhật SHOPIFY_ACCESS_TOKEN.
+
+Kiểm tra app đang liên kết:
+
+shopify app info
+
+Kết quả phải hiển thị đúng App, Client ID và danh sách access scopes ở trên.
+
+
+TRƯỜNG HỢP B: CUSTOM APP ĐƯỢC TẠO TRỰC TIẾP TRONG SHOPIFY ADMIN
+
+Trong Shopify Admin:
+
+1. Vào Settings -> Apps and sales channels.
+2. Chọn Develop apps.
+3. Mở custom app đang sử dụng.
+4. Chọn Configuration.
+5. Trong Admin API integration, bấm Configure/Edit.
+6. Tìm và bật các quyền tương ứng:
+
+- Products: Read and write.
+- Files: Read and write.
+- Publications/Product listings: Read and write.
+- App proxy: Write nếu màn hình cấu hình cung cấp quyền này.
+- Validations: Read and write.
+
+7. Save.
+8. Vào API credentials.
+9. Bấm Install app, Reinstall app hoặc Update app để áp dụng scope mới.
+10. Copy Admin API access token mới vào SHOPIFY_ACCESS_TOKEN trong .env.shopify.
+
+Shopify thường chỉ hiển thị Admin API access token đầy đủ một lần. Lưu token trong secret manager hoặc file .env.shopify, không ghi vào source code.
+
+
+KIỂM TRA TOKEN VÀ SCOPE
+
+Từ thư mục gốc project, chạy:
+
+python SHOPIFY_TOOL\shopify_codex_tool.py --env-file .env.shopify shop-info
+
+Kết quả đúng phải có:
+
+"ok": true
+
+Tiếp tục kiểm tra quyền đọc:
+
+python SHOPIFY_TOOL\shopify_codex_tool.py --env-file .env.shopify products-list --first 5
+python SHOPIFY_TOOL\shopify_codex_tool.py --env-file .env.shopify files-list
+
+Kiểm tra quyền ghi luôn phải thực hiện dry-run trước. Không thêm --apply khi chỉ kiểm tra payload:
+
+python SHOPIFY_TOOL\shopify_codex_tool.py --env-file .env.shopify migration-apply --file migration.json
+
+Nếu API trả ACCESS_DENIED hoặc thông báo thiếu scope:
+
+1. Bổ sung scope trong shopify.app.toml hoặc Shopify Admin.
+2. Deploy/update app.
+3. Chấp nhận lại quyền trên store.
+4. Lấy token mới nếu Shopify đã thay token.
+5. Restart npm start để backend đọc lại .env.shopify.
+
+
+3. CÀI DEPENDENCY VÀ KIỂM TRA
+-----------------------------
+
+Tại thư mục gốc project, chạy:
+
+npm install
+npm test
+npm run test:smoke
+
+Kết quả mong đợi:
+
+- Unit tests pass.
+- Smoke test chạy được cả desktop và mobile.
+
+
+4. CHẠY BACKEND LOCAL
+---------------------
+
+Mở terminal thứ nhất:
+
+npm start
+
+Mở trình duyệt kiểm tra:
+
+http://localhost:3000/admin.html
+
+Giữ terminal này chạy trong suốt quá trình test.
+
+
+5. TẠO PUBLIC HTTPS URL
+-----------------------
+
+Mở terminal thứ hai:
+
+cloudflared tunnel --url http://localhost:3000
+
+Cloudflared trả về URL dạng:
+
+https://xxxx.trycloudflare.com
+
+Copy URL này. Không đóng terminal cloudflared khi đang test.
+
+
+6. CẬP NHẬT shopify.app.toml
+---------------------------
+
+Mở shopify.app.toml và thay URL example.com bằng URL cloudflared:
+
+application_url = "https://xxxx.trycloudflare.com/admin.html"
+
+[app_proxy]
+url = "https://xxxx.trycloudflare.com/api/shopify/proxy"
+subpath = "amazon-customizer"
+prefix = "apps"
+
+Mỗi lần cloudflared sinh URL mới, phải cập nhật lại hai URL trên và deploy lại.
+
+
+7. DEPLOY APP VÀ EXTENSION
+-------------------------
+
+Chạy:
+
+shopify app deploy --allow-updates
+
+Lệnh này build và deploy:
+
+- Theme app extension Amazon customizer.
+- Cart/Checkout Validation Function.
+- App proxy và access scopes.
+
+Nếu Shopify yêu cầu cập nhật quyền hoặc cài lại app, mở link CLI cung cấp và chấp nhận quyền.
+
+
+8. THÊM APP BLOCK VÀO THEME HORIZON
+-----------------------------------
+
+Mở Shopify Admin, không mở storefront.
+
+Trang Themes của store mẫu:
+
+https://admin.shopify.com/store/nattest-21rymaaa/themes
+
+Thực hiện:
+
+1. Chọn theme Horizon đang ở trạng thái Current/Main.
+2. Bấm Customize.
+3. Chọn Products -> Default product.
+4. Chọn section Product information.
+5. Bấm Add block.
+6. Chọn Apps -> Amazon customizer.
+7. Giữ App proxy upload path là:
+
+/apps/amazon-customizer/upload
+
+8. Bấm Save.
+
+Block chỉ cần thêm một lần vào product template. Nó chỉ hiển thị nút Customize khi product có metafield custom.amazon_customizer.
+
+
+9. LẤY RAW JSON TỪ AMAZON
+-------------------------
+
+Mở đúng trang Amazon customization form có URL chứa:
+
+/customization/form
+
+Mở Developer Tools -> Console và chạy:
+
+const element = [...document.querySelectorAll('script[type="a-state"]')]
+  .find(item => item.outerHTML.includes('gc:app-config'));
+
+const amazonConfig = JSON.parse(element.textContent);
+copy(JSON.stringify(amazonConfig));
+
+Raw gc:app-config sẽ được copy vào clipboard.
+
+Nếu Amazon hiển thị CAPTCHA hoặc không có element, cần đăng nhập/refresh Amazon hoặc lấy config từ HAR đã capture.
+
+
+10. LẤY SHOPIFY PRODUCT ID
+--------------------------
+
+Mở product trong Shopify Admin. URL có dạng:
+
+https://admin.shopify.com/store/ten-store/products/11040796901543
+
+Dãy số cuối URL là Product ID:
+
+11040796901543
+
+Không dùng Product ID của sản phẩm "Customization Add-on". Đây chỉ là sản phẩm phụ phí nội bộ.
+
+
+11. CONVERT VÀ SYNC JSON
+------------------------
+
+Mở trang admin qua URL cloudflared:
+
+https://xxxx.trycloudflare.com/admin.html
+
+Nhập:
+
+- Shopify Product ID: ID sản phẩm thật cần custom.
+- Admin secret: giá trị CUSTOMIZER_ADMIN_SECRET trong .env.shopify.
+- Raw Amazon JSON: JSON gc:app-config vừa copy.
+- Price multiplier -> VND: hệ số chuyển phí Amazon sang VND.
+
+Ví dụ phí Amazon đang giống USD và muốn dùng tỷ giá cố định 25.000 VND:
+
+25000
+
+Thao tác theo đúng thứ tự:
+
+1. Bấm Convert & Preview.
+2. Kiểm tra ASIN, controls, assets và surcharge.
+3. Đảm bảo normalized JSON nhỏ hơn 131.072 bytes.
+4. Bấm Dry-run Sync.
+5. Kiểm tra đúng tên product và mức giá VND.
+6. Bấm Sync to Shopify và xác nhận.
+
+Sync thật có thể mất vài phút vì app phải upload ảnh, overlay và font sang Shopify Files.
+
+Sync sẽ tạo/cập nhật:
+
+- Product metafield custom.amazon_customizer.
+- Shopify Files dùng cho config.
+- Sản phẩm nội bộ Customization Add-on.
+- Các variant phụ phí VND.
+
+
+12. TEST TRÊN STOREFRONT
+------------------------
+
+Nếu store đang password protected, nhập password trước.
+
+Mở URL product thật, ví dụ:
+
+https://nattest-21rymaaa.myshopify.com/products/san-pham-test-nodejs
+
+Không test trên URL:
+
+/products/amazon-customization-addon
+
+Sau đó:
+
+1. Nhấn Ctrl + Shift + R để tải lại không dùng cache.
+2. Kiểm tra nút Customize.
+3. Mở modal.
+4. Test option, text, font, màu, ảnh upload, zoom, rotate và drag.
+5. Bấm Add customized item.
+6. Kiểm tra cart có sản phẩm chính và dòng phụ phí nếu có.
+7. Kiểm tra customization ID, preview URL và manifest URL trong line item/order.
+
+
+13. KIỂM TRA VÀ DỌN SHOPIFY FILES
+---------------------------------
+
+Xem trước các customer files quá 30 ngày sẽ bị xóa:
+
+npm run cleanup
+
+Chỉ khi kết quả đúng mới thực hiện xóa:
+
+npm run cleanup:apply
+
+Lệnh cleanup chỉ nhắm tới file có prefix amzcustom-order-, không xóa asset cấu hình sản phẩm.
+
+
+14. LỖI THƯỜNG GẶP
+-------------------
+
+A. Không thấy nút Customize
+
+- Kiểm tra đang mở product thật, không phải Customization Add-on.
+- Kiểm tra product đã Sync thành công.
+- Kiểm tra product có metafield custom.amazon_customizer.
+- Kiểm tra app block đã nằm trong đúng product template của theme live.
+- Save Theme Editor và nhấn Ctrl + Shift + R.
+- Kiểm tra đã nhập password storefront.
+
+B. Không upload được ảnh
+
+- Kiểm tra npm start vẫn đang chạy.
+- Kiểm tra cloudflared vẫn đang chạy.
+- Kiểm tra app_proxy.url dùng đúng URL cloudflared hiện tại.
+- Deploy lại sau khi đổi URL.
+
+C. Dry-run báo phí thập phân trên shop VND
+
+- Nhập Price multiplier rõ ràng.
+- Không để Shopify tạo giá như 2.95 VND.
+- Kiểm tra lại các mức phụ phí trước khi Sync thật.
+
+D. JSON vượt 128KB
+
+- Shopify không cho ghi JSON metafield mới vượt 128KB.
+- Không cắt JSON thủ công vì có thể làm hỏng placements/conditional rules.
+- Cần giảm asset/control không sử dụng hoặc chuyển cấu hình lớn sang backend storage.
+
+E. Đổi URL cloudflared nhưng app vẫn gọi URL cũ
+
+- Sửa application_url và app_proxy.url trong shopify.app.toml.
+- Chạy lại shopify app deploy --allow-updates.
+- Reload storefront không dùng cache.
+
+
+15. TRIỂN KHAI PRODUCTION
+-------------------------
+
+Cloudflared quick tunnel chỉ phù hợp để test. Production cần:
+
+- Deploy Node backend lên server có HTTPS/domain cố định.
+- Đặt application_url và app_proxy.url về domain cố định.
+- Lưu token/secret bằng environment variables của hosting.
+- Cấu hình scheduler chạy cleanup mỗi ngày.
+- Deploy app lại sau khi đổi URL production.

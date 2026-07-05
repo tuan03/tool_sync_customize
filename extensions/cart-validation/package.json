@@ -1,0 +1,7 @@
+{
+  "name": "customization-cart-validation",
+  "private": true,
+  "type": "module",
+  "scripts": {},
+  "dependencies": { "@shopify/shopify_function": "2.0.1" }
+}

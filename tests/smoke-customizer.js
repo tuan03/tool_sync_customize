@@ -1,5 +1,11 @@
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
+
+const UPLOAD_FIXTURE = path.join(os.tmpdir(), "amazon-customizer-smoke.png");
+if (!fs.existsSync(UPLOAD_FIXTURE)) {
+  fs.writeFileSync(UPLOAD_FIXTURE, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"));
+}
 
 function loadPlaywright() {
   const candidates = [
@@ -115,7 +121,7 @@ function assert(condition, message) {
       assert((await page.$$eval(".font-choice", (items) => items.length)) >= 1, "new.har: visible font choice missing");
       assert((await page.$$eval('link[href*="fonts.googleapis"]', (items) => items.length)) === 0, "new.har: should use HAR font assets, not Google Fonts");
       assert((await page.textContent("#price-delta")) === "+0.00", "new.har: optional paid field changed default price");
-      await page.setInputFiles("input[type=file]", path.join(process.cwd(), "debug-local-customizer-fixed.png"));
+      await page.setInputFiles("input[type=file]", UPLOAD_FIXTURE);
       await page.waitForTimeout(350);
       assert((await page.$$eval(".placement-layer img.inner-image", (items) => items.length)) >= 1, "new.har: upload preview missing");
       assert((await page.$$eval(".zoom-control", (items) => items.length)) >= 1, "new.har: upload zoom missing");
@@ -130,8 +136,8 @@ function assert(condition, message) {
       assert((await page.$$eval(".font-choice", (items) => items.length)) >= 20, "new2.har: visible font choices missing");
       assert((await page.$$eval('link[href*="fonts.googleapis"]', (items) => items.length)) === 0, "new2.har: should use HAR font assets, not Google Fonts");
       const uploaders = page.locator("input[type=file]");
-      await uploaders.nth(0).setInputFiles(path.join(process.cwd(), "debug-local-customizer-fixed.png"));
-      await uploaders.nth(1).setInputFiles(path.join(process.cwd(), "debug-local-customizer-fixed.png"));
+      await uploaders.nth(0).setInputFiles(UPLOAD_FIXTURE);
+      await uploaders.nth(1).setInputFiles(UPLOAD_FIXTURE);
       await page
         .locator('.control-group:has(.control-title h3:text-is("Your Image 02")) input[type="range"]')
         .nth(1)

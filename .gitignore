@@ -1,0 +1,6 @@
+.env.shopify
+node_modules/
+.shopify/
+dist/
+coverage/
+*.log

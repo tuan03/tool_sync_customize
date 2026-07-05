@@ -2,6 +2,9 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { URL } = require("url");
+const crypto = require("crypto");
+const { normalizeAmazonConfig, validateMetafieldSize, replaceAssetUrls } = require("./lib/amazon-config");
+const { ShopifyAdmin } = require("./lib/shopify-admin");
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -49,7 +52,7 @@ function readRequestBody(req) {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 1024 * 1024) {
+      if (body.length > 20 * 1024 * 1024) {
         reject(new Error("Request body too large"));
         req.destroy();
       }
@@ -57,6 +60,136 @@ function readRequestBody(req) {
     req.on("end", () => resolve(body));
     req.on("error", reject);
   });
+}
+
+function safeFileName(url, prefix = "amzcustom-config") {
+  let extension = ".bin";
+  try {
+    const candidate = path.extname(new URL(url).pathname).toLowerCase();
+    if (/^\.(png|jpe?g|webp|gif|svg|woff2?|ttf|otf)$/.test(candidate)) extension = candidate;
+  } catch {}
+  return `${prefix}-${crypto.createHash("sha1").update(url).digest("hex").slice(0, 16)}${extension}`;
+}
+
+async function mapLimit(items, limit, worker) {
+  const output = new Array(items.length);
+  let cursor = 0;
+  async function run() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      output[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return output;
+}
+
+function shopifyFileUrl(file) {
+  return file && ((file.image && file.image.url) || file.url) || "";
+}
+
+async function syncConfigAssets(admin, config, apply) {
+  if (!apply) return { config, assets: config.assets.map((asset) => ({ source: asset.url, dryRun: true, filename: safeFileName(asset.url) })) };
+  const uploaded = await mapLimit(config.assets, 3, async (asset) => {
+    const contentType = asset.roles && asset.roles.includes("font") ? "FILE" : "IMAGE";
+    const ready = await admin.ensureFileFromUrl(asset.url, safeFileName(asset.url), "Amazon customizer config asset", true, contentType);
+    return { source: asset.url, id: ready.id, url: shopifyFileUrl(ready) };
+  });
+  const replacements = Object.fromEntries(uploaded.filter((item) => item.url).map((item) => [item.source, item.url]));
+  return { config: replaceAssetUrls(config, replacements), assets: uploaded };
+}
+
+async function handleShopifyConvert(req, res) {
+  try {
+    const body = JSON.parse(await readRequestBody(req) || "{}");
+    const config = normalizeAmazonConfig(body.config, body.sourceUrl || "");
+    const bytes = validateMetafieldSize(config);
+    jsonResponse(res, 200, { ok: true, config, summary: { bytes, asin: config.source.asin, controls: config.controlOrder.length, assets: config.assets.length, surchargeAmounts: config.pricing.amounts, warnings: config.warnings } });
+  } catch (error) {
+    jsonResponse(res, 400, { ok: false, error: error.message });
+  }
+}
+
+async function handleShopifySync(req, res) {
+  try {
+    if (process.env.CUSTOMIZER_ADMIN_SECRET && req.headers.authorization !== `Bearer ${process.env.CUSTOMIZER_ADMIN_SECRET}`) throw new Error("Unauthorized admin request.");
+    const body = JSON.parse(await readRequestBody(req) || "{}");
+    const apply = body.apply === true;
+    const admin = new ShopifyAdmin();
+    let config = body.normalizedConfig || normalizeAmazonConfig(body.config, body.sourceUrl || "");
+    config = JSON.parse(JSON.stringify(config));
+    const hasFractionalVnd = config.pricing.amounts.some((amount) => !Number.isInteger(Number(amount)));
+    const priceMultiplier = Number(body.priceMultiplier);
+    if (hasFractionalVnd && (!Number.isFinite(priceMultiplier) || priceMultiplier <= 0)) {
+      throw new Error("Amazon surcharge contains decimal amounts but the shop currency is VND. Enter an explicit price multiplier before Sync.");
+    }
+    if (Number.isFinite(priceMultiplier) && priceMultiplier > 0 && priceMultiplier !== 1) {
+      for (const group of config.optionGroups) for (const option of group.options) option.cost = Math.round(Number(option.cost || 0) * priceMultiplier);
+      config.pricing.amounts = [...new Set(config.optionGroups.flatMap((group) => group.options.map((option) => option.cost)).filter((amount) => amount > 0))].sort((a, b) => a - b);
+      config.pricing.sourceMultiplier = priceMultiplier;
+    }
+    validateMetafieldSize(config);
+    const product = await admin.product(body.productId || "");
+    const definition = await admin.ensureCustomizerDefinition(apply);
+    const assetResult = await syncConfigAssets(admin, config, apply);
+    config = assetResult.config;
+    const surcharge = await admin.ensureSurchargeProduct(config.pricing.amounts, apply);
+    config.pricing.currencyCode = "VND";
+    config.pricing.surchargeProductId = surcharge.productId || null;
+    config.pricing.variantIds = surcharge.variants || {};
+    const bytes = validateMetafieldSize(config);
+    const metafield = await admin.setCustomizer(product.id, config, apply);
+    jsonResponse(res, 200, { ok: true, apply, product: { id: product.id, title: product.title }, definition, assets: assetResult.assets, metafield, bytes, pricing: { currency: "VND", amounts: config.pricing.amounts, surcharge } });
+  } catch (error) {
+    jsonResponse(res, 400, { ok: false, error: error.message });
+  }
+}
+
+function parseDataUrl(value) {
+  const match = String(value || "").match(/^data:([^;,]+);base64,([A-Za-z0-9+/=\r\n]+)$/);
+  if (!match) throw new Error("Expected a base64 data URL.");
+  return { mimeType: match[1], buffer: Buffer.from(match[2], "base64") };
+}
+
+function storefrontAuthorized(req, requestUrl) {
+  const secret = process.env.CUSTOMIZER_UPLOAD_SECRET || "";
+  if (secret && req.headers.authorization === `Bearer ${secret}`) return true;
+  const signature = requestUrl.searchParams.get("signature");
+  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET || "";
+  if (!signature || !clientSecret) return false;
+  const pairs = [...requestUrl.searchParams.entries()].filter(([key]) => key !== "signature").sort(([a], [b]) => a.localeCompare(b));
+  const message = pairs.map(([key, value]) => `${key}=${value}`).join("");
+  const expected = crypto.createHmac("sha256", clientSecret).update(message).digest("hex");
+  return signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+}
+
+async function handleShopifyUpload(req, res, requestUrl) {
+  try {
+    if (!storefrontAuthorized(req, requestUrl)) throw new Error("Unauthorized upload request.");
+    const body = JSON.parse(await readRequestBody(req) || "{}");
+    const parsed = parseDataUrl(body.dataUrl);
+    if (parsed.buffer.length > 10 * 1024 * 1024) throw new Error("File exceeds the 10MB upload limit.");
+    const allowed = new Set(["image/png", "image/jpeg", "image/webp", "application/json"]);
+    if (!allowed.has(parsed.mimeType)) throw new Error(`Unsupported MIME type: ${parsed.mimeType}`);
+    const timestamp = Date.now();
+    const extension = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/json": "json" }[parsed.mimeType];
+    const filename = `amzcustom-order-${timestamp}-${crypto.randomUUID()}.${extension}`;
+    const admin = new ShopifyAdmin();
+    const file = await admin.uploadBuffer(parsed.buffer, { filename, mimeType: parsed.mimeType, alt: `Amazon customizer order asset ${timestamp}`, contentType: parsed.mimeType === "application/json" ? "FILE" : "IMAGE" }, true);
+    jsonResponse(res, 200, { ok: true, file: { id: file.id, url: shopifyFileUrl(file), filename } });
+  } catch (error) {
+    jsonResponse(res, 400, { ok: false, error: error.message });
+  }
+}
+
+async function handleShopifyCleanup(req, res) {
+  try {
+    const authorization = req.headers.authorization || "";
+    if (!process.env.CUSTOMIZER_CRON_SECRET || authorization !== `Bearer ${process.env.CUSTOMIZER_CRON_SECRET}`) throw new Error("Unauthorized cleanup request.");
+    const body = JSON.parse(await readRequestBody(req) || "{}");
+    const result = await new ShopifyAdmin().cleanupOrderFiles({ olderThanDays: Number(body.olderThanDays) || 30, apply: body.apply === true });
+    jsonResponse(res, 200, { ok: true, ...result });
+  } catch (error) { jsonResponse(res, 400, { ok: false, error: error.message }); }
 }
 
 function decodeHtmlEntities(value) {
@@ -739,6 +872,26 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && requestUrl.pathname === "/api/custom-form") {
     handleCustomForm(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/api/shopify/convert") {
+    handleShopifyConvert(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/api/shopify/sync") {
+    handleShopifySync(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && (requestUrl.pathname === "/api/shopify/upload" || requestUrl.pathname === "/api/shopify/proxy/upload")) {
+    handleShopifyUpload(req, res, requestUrl);
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/api/shopify/cleanup") {
+    handleShopifyCleanup(req, res);
     return;
   }
 

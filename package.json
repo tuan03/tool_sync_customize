@@ -7,8 +7,11 @@
     "extract": "node index.js",
     "crawl": "node index.js",
     "start": "node server.js",
+    "cleanup": "node scripts/cleanup-shopify-files.js",
+    "cleanup:apply": "node scripts/cleanup-shopify-files.js --apply",
     "test:smoke": "node tests/smoke-customizer.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test:unit": "node --test tests/*.test.js",
+    "test": "npm run test:unit"
   },
   "keywords": [],
   "author": "",

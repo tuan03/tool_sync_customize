@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Amazon → Shopify Customizer</title>
+    <link rel="stylesheet" href="./admin.css">
+  </head>
+  <body>
+    <main class="admin-shell">
+      <header>
+        <p class="eyebrow">Shopify custom app</p>
+        <h1>Amazon Customizer Sync</h1>
+        <p>Dán raw <code>gc:app-config</code>, kiểm tra kết quả rồi đồng bộ vào product metafield.</p>
+      </header>
+      <section class="card form-grid">
+        <label>Shopify Product ID
+          <input id="product-id" placeholder="11053922189479 hoặc gid://shopify/Product/…">
+        </label>
+        <label>Admin secret
+          <input id="admin-secret" type="password" autocomplete="off" placeholder="CUSTOMIZER_ADMIN_SECRET">
+        </label>
+        <label>Price multiplier → VND
+          <input id="price-multiplier" type="number" min="0.0001" step="any" placeholder="Ví dụ 25000 nếu Amazon amount là USD">
+        </label>
+        <label class="wide">Raw Amazon JSON
+          <textarea id="raw-json" spellcheck="false" placeholder='{"asin":"…","sellerConfigComponents":{…}}'></textarea>
+        </label>
+        <div class="actions wide">
+          <button id="convert" type="button">Convert &amp; Preview</button>
+          <button id="dry-run" type="button" disabled>Dry-run Sync</button>
+          <button id="sync" class="primary" type="button" disabled>Sync to Shopify</button>
+        </div>
+        <p id="status" class="status wide" role="status"></p>
+      </section>
+      <section id="summary" class="card" hidden></section>
+      <section class="card">
+        <div class="section-title"><h2>Normalized JSON</h2><span id="byte-count"></span></div>
+        <textarea id="normalized-json" class="output" readonly spellcheck="false"></textarea>
+      </section>
+    </main>
+    <script src="./admin.js"></script>
+  </body>
+</html>

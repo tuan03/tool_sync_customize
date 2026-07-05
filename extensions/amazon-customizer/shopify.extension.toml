@@ -1,0 +1,8 @@
+api_version = "2026-04"
+
+[[extensions]]
+name = "Amazon product customizer"
+handle = "amazon-customizer"
+uid = "b3b0c9f2-57da-0473-8d7d-1795271fa44cb534a193"
+type = "theme"
+

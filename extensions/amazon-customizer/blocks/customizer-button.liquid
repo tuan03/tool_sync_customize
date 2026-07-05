@@ -1,0 +1,31 @@
+{% assign customizer_product = product %}
+{% if customizer_product == blank and closest.product != blank %}
+  {% assign customizer_product = closest.product %}
+{% endif %}
+{% assign customizer_metafield = customizer_product.metafields.custom.amazon_customizer %}
+<!-- amazon-customizer: product={{ customizer_product.id | default: 'missing' }}, config={{ customizer_metafield.id | default: 'missing' }} -->
+{% if customizer_metafield != blank %}
+  <div
+    class="amzcustom-root"
+    data-amzcustom-root
+    data-product-id="{{ customizer_product.id }}"
+    data-variant-id="{{ customizer_product.selected_or_first_available_variant.id }}"
+    data-config="{{ customizer_metafield.value | json | escape }}"
+    data-upload-url="{{ block.settings.upload_path | escape }}"
+  >
+    <button class="amzcustom-open" type="button">{{ block.settings.button_label | escape }}</button>
+  </div>
+  {{ 'amazon-customizer.css' | asset_url | stylesheet_tag }}
+  <script src="{{ 'amazon-customizer.js' | asset_url }}" defer></script>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Amazon customizer",
+  "target": "section",
+  "settings": [
+    { "type": "text", "id": "button_label", "label": "Button label", "default": "Customize" },
+    { "type": "text", "id": "upload_path", "label": "App proxy upload path", "default": "/apps/amazon-customizer/upload" }
+  ]
+}
+{% endschema %}

@@ -1,0 +1,22 @@
+query CartValidationsGenerateRunInput {
+  cart {
+    lines {
+      id
+      quantity
+      customizationId: attribute(key: "_customization_id") { value }
+      expectedFee: attribute(key: "_customization_fee") { value }
+      selectedOptions: attribute(key: "_customization_options") { value }
+      feeComponent: attribute(key: "_customization_fee_component") { value }
+      parentVariant: attribute(key: "_customization_parent_variant") { value }
+      merchandise {
+        ... on ProductVariant {
+          id
+          product {
+            id
+            customizer: metafield(namespace: "custom", key: "amazon_customizer") { value }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+# Shopify CLI configuration linked to the custom app "tuantest".
+client_id = "6eea8858c07eafaa338aa54ca3514c74"
+name = "tuantest"
+application_url = "https://trends-brighton-its-royal.trycloudflare.com/admin.html"
+embedded = true
+
+[access_scopes]
+scopes = "read_products,write_products,read_files,write_files,read_publications,write_publications,write_app_proxy,read_validations,write_validations"
+optional_scopes = []
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = []
+
+[webhooks]
+api_version = "2026-04"
+
+[app_proxy]
+url = "https://trends-brighton-its-royal.trycloudflare.com/api/shopify/proxy"
+subpath = "amazon-customizer"
+prefix = "apps"

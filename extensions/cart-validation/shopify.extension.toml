@@ -1,0 +1,18 @@
+api_version = "2026-04"
+
+[[extensions]]
+name = "Customization cart validation"
+handle = "customization-cart-validation"
+uid = "7a6b5046-2fd2-bbce-8965-678e4f74e6fa6a83bc9b"
+type = "function"
+description = "Prevents incomplete or mismatched customization surcharge lines."
+
+  [[extensions.targeting]]
+  target = "cart.validations.generate.run"
+  input_query = "src/cart_validations_generate_run.graphql"
+  export = "cart-validations-generate-run"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"
+  typegen_command = "node -e \"process.exit(0)\""

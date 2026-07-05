@@ -48,6 +48,12 @@
     const item = transform || {};
     return `translate(${item.x || 0}%,${item.y || 0}%) scale(${item.scale || 1}) rotate(${item.rotation || 0}deg)`;
   }
+  function fitBoxStyle(image) {
+    const width = Number(image && image.width) || 1;
+    const height = Number(image && image.height) || 1;
+    if (width >= height) return `width:100%;height:${100 * height / width}%;`;
+    return `width:${100 * width / height}%;height:100%;`;
+  }
   function evaluate(instance) {
     const state = instance.state;
     state.visible = {};
@@ -93,7 +99,8 @@
       const editId = `image:${input.id}`;
       const layer = document.createElement("div"); layer.className = `amzcustom-layer ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, box(config, input.placementId, state));
       const transform = state.imageTransforms[input.id] || { x: 0, y: 0, scale: 1, rotation: 0 };
-      layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="transform:${transformStyle(transform)}"><img alt="" src="${escapeHtml(state.images[input.id].dataUrl)}"></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box" style="transform:${transformStyle(transform)}"><div class="amzcustom-layer-tools"><button type="button" data-layer-action="edit">Edit</button><button type="button" data-layer-action="replace">Replace</button><button type="button" data-layer-action="delete">Delete</button></div><button type="button" class="amzcustom-rotate-handle" data-transform-handle="rotate" aria-label="Rotate"></button><button type="button" class="amzcustom-resize-handle nw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle ne" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle sw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle se" data-transform-handle="resize" aria-label="Resize"></button></div>` : ""}`;
+      const fit = fitBoxStyle(state.images[input.id]);
+      layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="${fit}transform:${transformStyle(transform)}"><img alt="" src="${escapeHtml(state.images[input.id].dataUrl)}"></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box" style="${fit}transform:${transformStyle(transform)}"><div class="amzcustom-layer-tools"><button type="button" data-layer-action="edit">Edit</button><button type="button" data-layer-action="replace">Replace</button><button type="button" data-layer-action="delete">Delete</button></div><button type="button" class="amzcustom-rotate-handle" data-transform-handle="rotate" aria-label="Rotate"></button><button type="button" class="amzcustom-resize-handle nw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle ne" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle sw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle se" data-transform-handle="resize" aria-label="Resize"></button></div>` : ""}`;
       stage.appendChild(layer);
     }
     for (const input of config.textInputs || []) {
@@ -162,7 +169,7 @@
     q(instance.modal, ".amzcustom-controls").innerHTML = html;
     bindControls(instance); renderPreview(instance);
   }
-  function fileData(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); }
+  function fileData(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => { const image = new Image(); image.onload = () => resolve({ file, dataUrl: reader.result, width: image.naturalWidth || 1, height: image.naturalHeight || 1 }); image.onerror = () => resolve({ file, dataUrl: reader.result, width: 1, height: 1 }); image.src = reader.result; }; reader.readAsDataURL(file); }); }
   function bindControls(instance) {
     if (instance.controlsBound) return;
     instance.controlsBound = true;
@@ -193,7 +200,7 @@
       const group = event.target.closest("[data-id]"); if (!group) return; const id = group.dataset.id;
       const textInput = instance.config.textInputs.find((x)=>x.id===id);
       if (event.target.matches('input[type="text"],textarea')) { instance.state.texts[id] = normalizeText(event.target.value, textInput || {}); event.target.value = instance.state.texts[id]; const meta=group.querySelector(".amzcustom-meta span"); if(meta) meta.textContent = `${instance.state.texts[id].length}${textInput?.maxLength ? `/${textInput.maxLength}` : ""}`; evaluate(instance); renderPreview(instance); return; }
-      if (event.target.matches('input[type="file"]') && event.target.files[0]) { instance.state.images[id] = { file:event.target.files[0], dataUrl:await fileData(event.target.files[0]) }; instance.state.imageTransforms[id] ||= { x:0, y:0, scale:1, rotation:0 }; instance.state.activeEdit = `image:${id}`; }
+      if (event.target.matches('input[type="file"]') && event.target.files[0]) { instance.state.images[id] = await fileData(event.target.files[0]); instance.state.imageTransforms[id] = { x:0, y:0, scale:1, rotation:0 }; instance.state.activeEdit = `image:${id}`; }
       if (event.target.matches("select")) { if (instance.config.optionGroups.some((x)=>x.id===id)) instance.state.options[id] = event.target.value; else if (instance.config.fontGroups.some((x)=>x.id===id)) instance.state.fonts[id] = event.target.value; else instance.state.colors[id] = event.target.value; }
       evaluate(instance); renderControls(instance);
     });

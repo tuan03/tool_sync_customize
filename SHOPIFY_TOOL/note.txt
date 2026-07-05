@@ -1,0 +1,7 @@
+Cách xin tạo app cấp quyền:
+shopify app deploy
+
+Cách lấy Client Id, secrect:
+shopify app env pull
+
+shopify app dev

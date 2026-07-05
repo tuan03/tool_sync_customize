@@ -1,0 +1,730 @@
+{
+  "asin": "B0CM3BKXK6",
+  "marketplaceId": "ATVPDKIKX0DER",
+  "sellerConfigVersion": "c7e68bc7-d4af-4204-8185-5a3ad951e75c",
+  "previewSize": 400,
+  "placements": [
+    {
+      "path": "PageContainerComponent > 表面 1 > FlatContainerComponent > 图片 1",
+      "identifier": "cd2b0c01-81db-42b2-988e-36a6f94914c6",
+      "name": "图片 1",
+      "label": "图片 1",
+      "position": {
+        "x": 5,
+        "y": 90
+      },
+      "dimension": {
+        "width": 390,
+        "height": 263
+      },
+      "isFreePlacement": true,
+      "childTypes": [
+        "ImageInputComponent"
+      ]
+    },
+    {
+      "path": "PageContainerComponent > 表面 1 > FlatContainerComponent > 图片 2",
+      "identifier": "45abdf0f-06ea-4d88-b69c-0ef54054985c",
+      "name": "图片 2",
+      "label": "图片 2",
+      "position": {
+        "x": 6,
+        "y": 89
+      },
+      "dimension": {
+        "width": 389,
+        "height": 267
+      },
+      "isFreePlacement": true,
+      "childTypes": [
+        "ImageInputComponent"
+      ]
+    },
+    {
+      "path": "PageContainerComponent > 表面 1 > FlatContainerComponent > 文本 1 > ContainerComponent > 文本输入 1",
+      "identifier": "ebb9aa8f-bcd0-4462-8f64-23ea72df9c37",
+      "name": "文本输入 1",
+      "label": "文本输入 1",
+      "position": {
+        "x": 7,
+        "y": 91
+      },
+      "dimension": {
+        "width": 389,
+        "height": 261
+      },
+      "isFreePlacement": true,
+      "childTypes": [
+        "FlatRatePriceDeltaContainerComponent"
+      ]
+    },
+    {
+      "path": "PageContainerComponent > 表面 1 > FlatContainerComponent > 文本 1 > ContainerComponent > 文本输入 2",
+      "identifier": "8e47dab2-0296-47a6-a3ac-e7f871eb17dd",
+      "name": "文本输入 2",
+      "label": "文本输入 2",
+      "position": {
+        "x": 6,
+        "y": 89
+      },
+      "dimension": {
+        "width": 387,
+        "height": 264
+      },
+      "isFreePlacement": true,
+      "childTypes": [
+        "FlatRatePriceDeltaContainerComponent"
+      ]
+    }
+  ],
+  "optionGroups": [
+    {
+      "path": "PageContainerComponent > 表面 1 > FlatContainerComponent > 选项下拉菜单 1",
+      "identifier": "5bdc98bb-3383-49ac-87fe-b5f8687c6fe5",
+      "name": "选项下拉菜单 1",
+      "label": "Color",
+      "options": [
+        {
+          "identifier": "3b00a5db-91bd-4002-9d6a-c0f1d009a3e7",
+          "name": "Black",
+          "label": "Black",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/4da9a2ec-a411-4c4a-88dc-550d3ed2ada2.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/83eb104b-75f5-4b8e-bab1-2568e1ab25fb.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "2c7fc2dd-d737-4cc6-9206-94e49af8e038",
+          "name": "White",
+          "label": "White",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/7658348a-215e-4267-974b-8cabcba3b8d4.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/65a56bda-d2e1-4ad6-94b4-342773121235.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "b4eba3fc-ab0d-4ab1-a0d0-eaff473d2ab5",
+          "name": "Blue",
+          "label": "Blue",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/f9ecd927-d7e5-4b0b-a390-1ec8f67cd003.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/cb5c8640-0e55-4fff-b2fc-54b61146a012.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "8b05afa3-e5e7-4a52-821b-2997f2df1c3c",
+          "name": "Yellow",
+          "label": "Yellow",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/4b3e4d99-6210-4ba0-9050-8f9e02342dee.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/60872534-27f8-41b8-a929-c6e3c7947b38.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "e4c84c64-623e-4666-85cd-746da2e3cff9",
+          "name": "Light Blue",
+          "label": "Light Blue",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/f7baeaf8-53d4-43c4-9be4-8ef9be44f473.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/abf2216f-8979-4d45-aa12-7faf9f825cd4.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "d92b268f-62e2-4912-a750-8766b74023af",
+          "name": "Sky Blue",
+          "label": "Sky Blue",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/b7135927-d952-4328-b35d-0cdf940f8c04.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/89edb34f-373d-4cf6-afff-0868d07144e7.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "6ff80ef7-c606-4e9e-bb3e-89504aa84cd4",
+          "name": "Rose Red",
+          "label": "Rose Red",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/bdac5c83-df33-4af5-85b1-cc3c574648d4.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/04fe5e28-0452-48d3-aef9-eaffbe65c078.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "780d649e-18bb-4d83-972c-778f80c5accc",
+          "name": "Light Pink",
+          "label": "Light Pink",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/1838795a-0ecf-4ee6-bf35-39b4825a4bf0.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/249c953d-715c-446e-a874-3ea223933195.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "d50a7c0b-b900-4f90-ac48-b86d3c262b24",
+          "name": "Dark Green",
+          "label": "Dark Green",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/e3679588-248e-4020-b22e-298869eeb2ed.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/e1437e51-e00c-4f66-ae17-460e15277f12.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "7c7d4c39-cf63-420f-96a3-e7e5f30a8a91",
+          "name": "Green",
+          "label": "Green",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/cc9aa5a4-e5df-4ef2-ace2-53ed1c5f9d5c.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/d53b2a34-eb62-435b-9e29-1f457b8f822a.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "d839b23d-a7aa-4c1e-800e-d77ca375fc80",
+          "name": "Orange",
+          "label": "Orange",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/ff015136-236b-42ac-962a-02bd904deb27.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/0096f05a-6a4b-4e34-9e30-0eb0b2e992b6.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "0ae16b33-606c-485d-afe5-34a11371160f",
+          "name": "Purple",
+          "label": "Purple",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/670808c5-c798-4243-9bc4-e4d81f95d804.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/9035064e-b597-4cc7-8266-ba7e2713dc77.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "8977300b-fcff-4d7e-a25e-e8ba72c01a79",
+          "name": "Red",
+          "label": "Red",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/18a37b88-9547-4156-927e-9fdb46509f4b.jpg",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/29968e83-ad0d-4ee9-a20b-98a7a54529c5.jpg",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "f623a0d4-e72f-4819-a912-667c92b11421",
+          "name": "Bright Green",
+          "label": "Bright Green",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/edb584ed-3742-4c58-be3d-2b644c73cf0f.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/66fc8da7-ead3-4705-8d10-ad8f30697672.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "75775fc0-84a4-4529-a81c-fb55232b7d4d",
+          "name": "Gray",
+          "label": "Gray",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/b2eeaf34-9ba2-40b2-9cda-9225905b7295.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/9fe03aa6-983c-4be6-8e0a-542817eb9310.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "09d09832-0896-44fe-8cf0-952f18657f5e",
+          "name": "Brown",
+          "label": "Brown",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/6a195d6f-a535-45ee-8b39-e1a21459e7be.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/f69202f7-0293-4164-b79b-2fc4ff670326.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "82240dd0-8276-4314-9163-fd6b7a243fbb",
+          "name": "Deep Purple",
+          "label": "Deep Purple",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/de353a84-5f14-43f6-9189-efd7451be009.jpg",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/f0c11a83-5cd1-4050-b7ce-eb374731322b.jpg",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "9cf0007f-c986-4bbd-bfab-340d85a40e8d",
+          "name": "Hot Pink",
+          "label": "Hot Pink",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/8764f25b-dbbd-442f-a83b-a9b4d58bc387.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/afdd9af7-0c27-4653-b298-3c27a6ed2ced.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "54352f1b-9253-480c-93d7-bad2b77cbc65",
+          "name": "Light purple",
+          "label": "Light purple",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/56aaf847-f4ac-49b3-874c-d9429260556a.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/046e7fa9-1e2d-47e3-b099-6395176f4205.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "64b0b5fa-582e-4692-b72b-46f11453ce4a",
+          "name": "Claret",
+          "label": "Claret",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/0a1783e0-f0e9-49cc-aed9-d9103ec0a7b0.jpg",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/c401c5ba-ecb8-415f-a847-655ac035f3ab.jpg",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "f8ce45ce-61d2-47c3-be93-3766252c442d",
+          "name": "Lotus color",
+          "label": "Lotus color",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/341fd66b-57de-4f4b-8a47-b3c2f17b1f80.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/9b09da60-5f6a-4b7b-90ef-7af7ce282712.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "4c0cf87e-8d3f-4bb5-854e-2176379427cf",
+          "name": "Watermelon red",
+          "label": "Watermelon red",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/6d05229b-c08e-4e0d-bef1-b2a44de8676e.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/b400f6e3-e522-48b6-9873-f545f48bfc07.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "bcb27c4c-24ed-41df-8431-1e7c9149b56a",
+          "name": "Navy Blue",
+          "label": "Navy Blue",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/2fcaa0fc-6b89-410d-bd5a-aaaeff4c6010.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/d95b4ee0-47bd-48a6-ad06-c87808ce32f2.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "5ad78e39-5785-42b3-aba0-14fcabcb7a45",
+          "name": "Olive",
+          "label": "Olive",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/f97a4d07-3917-4aab-a537-dab99185da6a.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/2048d1c9-1711-4cbf-a566-5190dae42b71.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "5c7514c4-17ab-4896-a2b6-6dca43cf99f7",
+          "name": "Pink",
+          "label": "Pink",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/900f5bc2-c288-4cdf-a530-e088eaafcac9.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/c1e3b00f-c711-4ec9-9138-7593c6c669fb.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "cd7238b9-e237-4e81-828c-baf65a0c2d66",
+          "name": "Brick red",
+          "label": "Brick red",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/e4ddf50d-d9e6-4701-9a7a-804f156fbc07.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/635e4f52-b9fc-4769-a5d6-c3dde8d2f9fa.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "40e7ed51-6c3e-408f-a8a3-38b77412ed8b",
+          "name": "Purple - 5d285f",
+          "label": "Purple - 5d285f",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/5b5e9e5e-3b4d-4255-bb3c-c917d814c885.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/7b6dc9d6-d0d7-4104-a62c-4eb62c890a7d.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "6377451f-163b-4d90-8fc7-d83ce53190c4",
+          "name": "Ryan Red",
+          "label": "Ryan Red",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/807aedfb-0adb-4d9a-a3f3-3b737026b246.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/c0ede512-6efa-44a3-aeda-a483c6f4df79.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "dfbb5f08-526f-4116-aa5a-a6c76eb89561",
+          "name": "Light Pink2",
+          "label": "Light Pink2",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/55fdc446-2912-4083-88a0-9129f588a61e.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/5d0c01e4-f199-4c02-bd4e-3c01a5d854c9.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        },
+        {
+          "identifier": "7ae981e1-3edb-4963-b1fc-530772560a39",
+          "name": "Tender green",
+          "label": "Tender green",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/1739a0d9-e446-408a-beb2-65dcca05bfe6.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/A12Z9SZ0IEL1MC/d2b98cf1-3a0b-4b07-8489-3cd17218816d.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "PageContainerComponent > 表面 1 > FlatContainerComponent > 选项下拉列表 3",
+      "identifier": "s28RbzbZ",
+      "name": "选项下拉列表 3",
+      "label": "Design optimization (HD images or background removal)",
+      "options": [
+        {
+          "identifier": "fd_2XCnU",
+          "name": "Thanks, no processing",
+          "label": "Thanks, no processing",
+          "cost": 0
+        },
+        {
+          "identifier": "Z9seu-uW",
+          "name": "Please optimize the process",
+          "label": "Please optimize the process",
+          "cost": 2.96
+        }
+      ]
+    },
+    {
+      "path": "PageContainerComponent > 表面 1 > FlatContainerComponent > 选项下拉菜单 2",
+      "identifier": "eb6dae2d-7097-4ba2-ae6d-453074722046",
+      "name": "选项下拉菜单 2",
+      "label": "Please check your design and spelling again",
+      "options": [
+        {
+          "identifier": "a4d7509b-f656-4d74-9abd-94e84e184cca",
+          "name": "Yes, No Error Found",
+          "label": "Yes, No Error Found",
+          "cost": 0
+        },
+        {
+          "identifier": "f05c6498-fe62-43f1-855a-20e7a378211d",
+          "name": "Yes, no error found",
+          "label": "Yes, no error found",
+          "cost": 0
+        }
+      ]
+    }
+  ]
+}

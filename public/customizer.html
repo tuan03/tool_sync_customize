@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Product Customizer</title>
+    <link rel="stylesheet" href="./customizer.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="loader-band" aria-labelledby="loader-title">
+        <div>
+          <h1 id="loader-title">Product customizer</h1>
+          <p>Paste a custom form URL to load its configuration and rebuild the personalization flow.</p>
+        </div>
+        <form id="load-form" class="load-form">
+          <input
+            id="custom-url"
+            name="url"
+            type="url"
+            autocomplete="off"
+            placeholder="https://www.amazon.com/customization/form?..."
+            required
+          />
+          <button type="submit">Load</button>
+        </form>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+      </section>
+
+      <section id="workspace" class="workspace is-empty">
+        <aside class="preview-panel" aria-label="Product preview">
+          <div class="preview-header">
+            <div>
+              <h2 id="product-title">Preview</h2>
+              <p id="product-meta">No configuration loaded</p>
+            </div>
+            <div id="price-delta" class="price-delta">+0.00</div>
+          </div>
+          <div id="preview-stage" class="preview-stage" aria-label="Live customized preview">
+            <div class="preview-placeholder">Load a custom form URL</div>
+          </div>
+          <div class="preview-actions">
+            <button id="export-json" type="button" disabled>Export JSON</button>
+            <button id="export-png" type="button" disabled>Export PNG</button>
+          </div>
+        </aside>
+
+        <section class="controls-panel" aria-label="Customization controls">
+          <div id="warnings" class="warnings"></div>
+          <div id="controls" class="controls-empty">Controls will appear after loading a config.</div>
+          <div id="validation-summary" class="validation-summary"></div>
+          <label class="export-label" for="export-output">Personalization JSON</label>
+          <textarea id="export-output" readonly spellcheck="false"></textarea>
+        </section>
+      </section>
+    </main>
+    <script src="./customizer.js"></script>
+  </body>
+</html>

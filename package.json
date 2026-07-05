@@ -1,0 +1,17 @@
+{
+  "name": "custom",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "extract": "node index.js",
+    "crawl": "node index.js",
+    "start": "node server.js",
+    "test:smoke": "node tests/smoke-customizer.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}

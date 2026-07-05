@@ -1,0 +1,265 @@
+{
+  "asin": "B0F4KCT99R",
+  "marketplaceId": "ATVPDKIKX0DER",
+  "sellerConfigVersion": "98588908-1843-4f67-932d-8b203b5fc626",
+  "previewSize": 400,
+  "placements": [
+    {
+      "path": "PageContainerComponent > Surface 1 > FlatContainerComponent > Image 1",
+      "identifier": "YIh2jFMS",
+      "name": "Image 1",
+      "label": "Image 1",
+      "position": {
+        "x": 104,
+        "y": 25
+      },
+      "dimension": {
+        "width": 192,
+        "height": 193
+      },
+      "isFreePlacement": true,
+      "childTypes": [
+        "ImageInputComponent"
+      ]
+    },
+    {
+      "path": "PageContainerComponent > Surface 1 > FlatContainerComponent > Text 1 > ContainerComponent > Text Input 1",
+      "identifier": "fA8GFSGQ",
+      "name": "Text Input 1",
+      "label": "Text Input 1",
+      "position": {
+        "x": 154,
+        "y": 237
+      },
+      "dimension": {
+        "width": 90,
+        "height": 14
+      },
+      "isFreePlacement": false,
+      "childTypes": [
+        "FlatRatePriceDeltaContainerComponent"
+      ]
+    },
+    {
+      "path": "PageContainerComponent > Surface 1 > FlatContainerComponent > Text 1 > ContainerComponent > Text Input 2",
+      "identifier": "TsEfpJpG",
+      "name": "Text Input 2",
+      "label": "Text Input 2",
+      "position": {
+        "x": 139,
+        "y": 253
+      },
+      "dimension": {
+        "width": 74,
+        "height": 14
+      },
+      "isFreePlacement": false,
+      "childTypes": [
+        "FlatRatePriceDeltaContainerComponent"
+      ]
+    },
+    {
+      "path": "PageContainerComponent > Surface 1 > FlatContainerComponent > Text 1 > ContainerComponent > Text Input 3",
+      "identifier": "oPk3QTu9",
+      "name": "Text Input 3",
+      "label": "Text Input 3",
+      "position": {
+        "x": 111,
+        "y": 276
+      },
+      "dimension": {
+        "width": 25,
+        "height": 13
+      },
+      "isFreePlacement": false,
+      "childTypes": [
+        "FlatRatePriceDeltaContainerComponent"
+      ]
+    },
+    {
+      "path": "PageContainerComponent > Surface 1 > FlatContainerComponent > Text 1 > ContainerComponent > Text Input 4",
+      "identifier": "vO68w-3V",
+      "name": "Text Input 4",
+      "label": "Text Input 4",
+      "position": {
+        "x": 264,
+        "y": 277
+      },
+      "dimension": {
+        "width": 27,
+        "height": 12
+      },
+      "isFreePlacement": false,
+      "childTypes": [
+        "FlatRatePriceDeltaContainerComponent"
+      ]
+    },
+    {
+      "path": "PageContainerComponent > Surface 1 > FlatContainerComponent > Text 2 > ContainerComponent > Text Input 1",
+      "identifier": "FUt9bHXs",
+      "name": "Text Input 1",
+      "label": "Text Input 1",
+      "position": {
+        "x": 115,
+        "y": 20
+      },
+      "dimension": {
+        "width": 20,
+        "height": 16
+      },
+      "isFreePlacement": false,
+      "childTypes": [
+        "FlatRatePriceDeltaContainerComponent"
+      ]
+    },
+    {
+      "path": "PageContainerComponent > Surface 1 > FlatContainerComponent > Text 3 > ContainerComponent > Text Input 1",
+      "identifier": "NHyuxx7i",
+      "name": "Text Input 1",
+      "label": "Text Input 1",
+      "position": {
+        "x": 138,
+        "y": 18
+      },
+      "dimension": {
+        "width": 59,
+        "height": 12
+      },
+      "isFreePlacement": false,
+      "childTypes": [
+        "FlatRatePriceDeltaContainerComponent"
+      ]
+    },
+    {
+      "path": "PageContainerComponent > Surface 1 > FlatContainerComponent > Text 3 > ContainerComponent > Text Input 2",
+      "identifier": "B_nMKhMt",
+      "name": "Text Input 2",
+      "label": "Text Input 2",
+      "position": {
+        "x": 139,
+        "y": 27
+      },
+      "dimension": {
+        "width": 95,
+        "height": 12
+      },
+      "isFreePlacement": false,
+      "childTypes": [
+        "FlatRatePriceDeltaContainerComponent"
+      ]
+    }
+  ],
+  "optionGroups": [
+    {
+      "path": "PageContainerComponent > Surface 1 > FlatContainerComponent > Option Dropdown 1",
+      "identifier": "T0GcrU0y",
+      "name": "Option Dropdown 1",
+      "label": "Message Windows",
+      "options": [
+        {
+          "identifier": "ib5zjLIj",
+          "name": "NO",
+          "label": "NO",
+          "cost": 0
+        },
+        {
+          "identifier": "gG7Fn8Lr",
+          "name": "YES",
+          "label": "YES",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/ANWP8IWUY2JTU/9b10d6a54788f854d6f9e7517aa0bca7.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          },
+          "thumbnailImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/ANWP8IWUY2JTU/fef9b9a5e5643114584213c85f11b76b.png",
+            "dimension": {
+              "width": 400,
+              "height": 400
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "PageContainerComponent > Surface 1 > FlatContainerComponent > Option Dropdown 2",
+      "identifier": "nIuLty6C",
+      "name": "Option Dropdown 2",
+      "label": "Choose Item Size",
+      "options": [
+        {
+          "identifier": "lkx1NdHS",
+          "name": "XX-Small: 1x1.5ft",
+          "label": "XX-Small: 1x1.5ft",
+          "cost": 0,
+          "overlayImage": {
+            "imageUrl": "https://m.media-amazon.com/images/S/gestalt-seller-images-prod-us-east-1/ATVPDKIKX0DER/ANWP8IWUY2JTU/9cf236e3777439a8c0c6ff70c8cb49c6.jpg",
+            "dimension": {
+              "width": 1080,
+              "height": 1080
+            }
+          }
+        },
+        {
+          "identifier": "nwzn_v9N",
+          "name": "X-Small: 2x3ft",
+          "label": "X-Small: 2x3ft",
+          "cost": 5
+        },
+        {
+          "identifier": "cEILU4o2",
+          "name": "Small: 3x5ft - Hot",
+          "label": "Small: 3x5ft - Hot",
+          "cost": 40
+        },
+        {
+          "identifier": "SKKgmUzE",
+          "name": "Medium: 4x6ft - Best Choice",
+          "label": "Medium: 4x6ft - Best Choice",
+          "cost": 80
+        },
+        {
+          "identifier": "p-dDDmqc",
+          "name": "Large: 5x8ft",
+          "label": "Large: 5x8ft",
+          "cost": 110
+        }
+      ]
+    },
+    {
+      "path": "PageContainerComponent > Surface 1 > FlatContainerComponent > Option Dropdown 3",
+      "identifier": "Fuo8hYgv",
+      "name": "Option Dropdown 3",
+      "label": "Would You Like to Purchase a Matching Tapestry?",
+      "options": [
+        {
+          "identifier": "_IrAhMPM",
+          "name": "Small (60*40)",
+          "label": "Small (60*40)",
+          "cost": 14.95
+        },
+        {
+          "identifier": "sdesSmV0",
+          "name": "Medium (60*50)",
+          "label": "Medium (60*50)",
+          "cost": 19.95
+        },
+        {
+          "identifier": "vyPALmMY",
+          "name": "X-Large (80*60)",
+          "label": "X-Large (80*60)",
+          "cost": 26.95
+        },
+        {
+          "identifier": "CvyXpuC7",
+          "name": "2X-Large (90*70)",
+          "label": "2X-Large (90*70)",
+          "cost": 32.95
+        }
+      ]
+    }
+  ]
+}

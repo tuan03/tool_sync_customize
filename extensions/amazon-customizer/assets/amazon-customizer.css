@@ -35,6 +35,7 @@
 .amzcustom-controls { display: grid; gap: 0; border: 1px solid #e3e6e6; border-radius: 6px; }
 .amzcustom-control { display: grid; gap: 8px; padding: 14px; border-bottom: 1px solid #e3e6e6; }
 .amzcustom-control:last-child { border-bottom: 0; }
+.amzcustom-control.is-editing { background: #f0fbff; box-shadow: inset 3px 0 0 #007185; }
 .amzcustom-title { display: flex; justify-content: space-between; gap: 10px; font-weight: 700; line-height: 1.25; }
 .amzcustom-title em { color: #b12704; font-size: 12px; font-style: normal; font-weight: 700; }
 .amzcustom-help { margin: 0; color: #565959; font-size: 13px; line-height: 1.35; }
@@ -63,6 +64,7 @@
 .amzcustom-upload-row img { width: 72px; height: 72px; object-fit: cover; border: 1px solid #d5d9d9; border-radius: 4px; }
 .amzcustom-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .amzcustom-actions button { min-height: 34px; border: 1px solid #d5d9d9; border-radius: 4px; background: #fff; color: #111; padding: 0 12px; cursor: pointer; }
+.amzcustom-control.is-editing .amzcustom-actions button:first-child { border-color: #007185; background: #e6f7fb; font-weight: 700; }
 .amzcustom-foot { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 14px 20px; border-top: 1px solid #ddd; background: #fff; }
 .amzcustom-add { min-width: 190px; min-height: 46px; border: 1px solid #fcd200; border-radius: 999px; background: #ffd814; color: #111; font-weight: 800; cursor: pointer; }
 .amzcustom-error { color: #b42318; font-size: 13px; }

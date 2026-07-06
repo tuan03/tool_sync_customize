@@ -34,7 +34,7 @@ button {
   border: 1px solid var(--accent);
   background: var(--accent);
   color: #fff;
-  min-height: 40px;
+  min-height: 44px;
   border-radius: 6px;
   padding: 0 14px;
   cursor: pointer;
@@ -52,8 +52,8 @@ button:disabled {
 }
 
 .app-shell {
-  width: min(1280px, calc(100% - 32px));
-  margin: 24px auto;
+  width: min(100% - 20px, 1280px);
+  margin: 10px auto;
 }
 
 .loader-band,
@@ -66,9 +66,9 @@ button:disabled {
 }
 
 .loader-band {
-  padding: 18px;
+  padding: 14px;
   display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.2fr);
+  grid-template-columns: 1fr;
   gap: 16px;
   align-items: end;
 }
@@ -90,7 +90,7 @@ button:disabled {
 
 .load-form {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
@@ -102,7 +102,7 @@ button:disabled {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 6px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 9px 10px;
   background: #fff;
   color: var(--text);
@@ -123,7 +123,7 @@ button:disabled {
 .workspace {
   margin-top: 18px;
   display: grid;
-  grid-template-columns: minmax(360px, 480px) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 18px;
   align-items: start;
 }
@@ -139,7 +139,8 @@ button:disabled {
 
 .preview-panel {
   position: sticky;
-  top: 16px;
+  top: 0;
+  z-index: 4;
 }
 
 .preview-header {
@@ -161,7 +162,8 @@ button:disabled {
 
 .preview-stage {
   position: relative;
-  width: 100%;
+  width: min(100%, 320px, 40dvh);
+  margin: 0 auto;
   aspect-ratio: 1 / 1;
   overflow: hidden;
   background: #eef1f5;
@@ -199,6 +201,34 @@ button:disabled {
   object-fit: contain;
 }
 
+.preview-base {
+  z-index: 0;
+}
+
+.preview-background {
+  z-index: 1;
+}
+
+.image-layer {
+  z-index: 2;
+}
+
+.image-layer.is-active-edit {
+  z-index: 3;
+}
+
+.preview-overlay {
+  z-index: 4;
+}
+
+.text-layer {
+  z-index: 5;
+}
+
+.preview-mask {
+  z-index: 6;
+}
+
 .placement-layer {
   position: absolute;
   overflow: hidden;
@@ -209,6 +239,17 @@ button:disabled {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   text-align: center;
+}
+
+.text-layer {
+  pointer-events: auto;
+  cursor: move;
+}
+
+.text-layer.is-single-line {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .placement-layer.is-draggable {
@@ -262,6 +303,7 @@ button:disabled {
 }
 
 .control-group {
+  position: relative;
   border-bottom: 1px solid var(--border);
   padding: 16px 0;
 }
@@ -279,7 +321,7 @@ button:disabled {
 
 .control-title {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   margin-bottom: 8px;
 }
@@ -294,6 +336,12 @@ button:disabled {
   font-size: 13px;
 }
 
+.optional {
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 400;
+}
+
 .instructions {
   margin: 0 0 10px;
   color: var(--muted);
@@ -302,12 +350,24 @@ button:disabled {
 }
 
 .option-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  display: flex;
   gap: 10px;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 4px 10px;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.option-grid.is-collapsed {
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .option-card {
+  flex: 0 0 132px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fff;
@@ -317,6 +377,7 @@ button:disabled {
   text-align: left;
   display: grid;
   gap: 8px;
+  scroll-snap-align: start;
 }
 
 .option-card.has-no-image {
@@ -327,6 +388,84 @@ button:disabled {
 .option-card.is-selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.option-grid.is-yes-no {
+  display: flex;
+  gap: 10px;
+  max-height: none;
+  overflow: visible;
+}
+
+.option-grid.is-yes-no .option-card {
+  min-width: 90px;
+  min-height: 48px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border-color: var(--border);
+  border-radius: 8px;
+  background: #fff;
+  font-weight: 800;
+}
+
+.option-grid.is-yes-no .option-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+  background: #f7fafa;
+}
+
+.option-grid.is-yes-no .option-thumb,
+.option-grid.is-yes-no .option-cost {
+  display: none;
+}
+
+.option-grid.is-yes-no .option-name {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.option-grid.is-text-choice {
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.option-grid.is-text-choice .option-card {
+  min-height: 98px;
+  padding: 12px 10px;
+  align-content: start;
+  border-color: var(--border);
+  border-radius: 8px;
+  gap: 8px;
+}
+
+.option-grid.is-text-choice .option-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+  background: #f7fafa;
+}
+
+.option-grid.is-text-choice .option-thumb {
+  display: none;
+}
+
+.option-grid.is-text-choice .option-name {
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.option-grid.is-text-choice .option-cost {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.option-card:not(.is-selected):not(:disabled):hover {
+  border-color: #8d9797;
+  box-shadow: 0 0 0 1px #e3e6e6;
 }
 
 .option-thumb {
@@ -347,6 +486,92 @@ button:disabled {
 .option-cost {
   color: var(--muted);
   font-size: 12px;
+}
+
+.option-toggle {
+  justify-self: start;
+  margin-top: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 400;
+  padding: 0;
+}
+
+.option-toggle::after {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 8px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.option-grid.is-expanded + .option-toggle::after {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.option-toggle:hover {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.option-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: grid;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.16);
+}
+
+.option-list.is-above {
+  box-shadow: 0 -8px 24px rgba(16, 24, 40, 0.14);
+}
+
+.option-row {
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.option-row:hover {
+  background: #f7fafa;
+  border-color: var(--border);
+}
+
+.option-row.is-selected {
+  background: #e6f4fb;
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.option-row img,
+.option-row-icon {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+  justify-self: center;
+}
+
+.option-row-icon {
+  background: #f7fafa;
+  border: 1px solid var(--border);
 }
 
 .swatch-row {
@@ -409,18 +634,42 @@ button:disabled {
   font-size: 13px;
 }
 
-.font-select {
-  font-size: 16px;
+.font-dropdown {
+  position: relative;
 }
 
-.font-preview {
+.font-dropdown summary {
+  min-height: 42px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: #f8fafc;
-  padding: 10px 12px;
-  min-height: 42px;
-  font-size: 22px;
-  line-height: 1.1;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+  padding: 9px 38px 9px 12px;
+  display: flex;
+  align-items: center;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.font-dropdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.font-dropdown summary::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 18px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--text);
+}
+
+.font-dropdown[open] summary::after {
+  border-top: 0;
+  border-bottom: 6px solid var(--text);
 }
 
 .font-choice-list {
@@ -429,7 +678,19 @@ button:disabled {
   gap: 8px;
   max-height: 220px;
   overflow: auto;
-  padding: 2px;
+  padding: 8px;
+}
+
+.font-dropdown .font-choice-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
 }
 
 .font-choice {
@@ -482,28 +743,55 @@ button:disabled {
   display: none;
 }
 
-@media (max-width: 900px) {
-  .loader-band,
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .preview-panel {
-    position: static;
-  }
-}
-
-@media (max-width: 560px) {
+@media (min-width: 561px) {
   .app-shell {
-    width: min(100% - 20px, 1280px);
-    margin: 10px auto;
+    width: min(1280px, calc(100% - 32px));
+    margin: 18px auto;
   }
 
   .load-form {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr auto;
   }
 
-  .option-grid {
-    grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
+  .preview-stage {
+    width: min(100%, 420px, 48dvh);
+  }
+
+  .option-grid,
+  .option-grid.is-collapsed {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    overflow: visible;
+    padding: 4px;
+    scroll-snap-type: none;
+  }
+
+  .option-card {
+    flex: initial;
+    min-height: 96px;
+  }
+
+  .option-grid.is-text-choice {
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    overflow: visible;
+  }
+}
+
+@media (min-width: 901px) {
+  .loader-band {
+    grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.2fr);
+    padding: 18px;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(360px, 480px) minmax(0, 1fr);
+  }
+
+  .preview-panel {
+    top: 16px;
+  }
+
+  .preview-stage {
+    width: 100%;
   }
 }

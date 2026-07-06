@@ -33,11 +33,15 @@
     visibleComponents: {},
     validationErrors: {},
     activeEditId: "",
+    expandedOptionGroups: {},
+    promotedOptionIds: {},
     priceDeltaTotal: 0,
     exportedPersonalization: null,
   };
   const loadedFontFamilies = new Set();
   const TEXT_LINE_HEIGHT = 1.18;
+  const textMeasureCanvas = document.createElement("canvas");
+  const textMeasureContext = textMeasureCanvas.getContext("2d");
 
   function setStatus(message, isError) {
     elements.status.textContent = message || "";
@@ -129,6 +133,13 @@
       const style = document.createElement("style");
       style.textContent = `@font-face{font-family:${JSON.stringify(font.family)};src:url("${assetUrl(font.fontUrl)}");font-display:swap;}`;
       document.head.appendChild(style);
+      return;
+    }
+    if (/googlefont/i.test(font.fontType || "")) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.family).replace(/%20/g, "+")}&display=swap`;
+      document.head.appendChild(link);
     }
   }
 
@@ -225,6 +236,8 @@
     state.placementOverrides = {};
     state.validationErrors = {};
     state.activeEditId = "";
+    state.expandedOptionGroups = {};
+    state.promotedOptionIds = {};
     state.exportedPersonalization = null;
     loadConfiguredFonts(config);
 
@@ -336,19 +349,33 @@
     return (state.textTransforms[inputId] && state.textTransforms[inputId].scale) || 1;
   }
 
-  function textFontSize(input, cssOrBox, textValue) {
+  function isSingleLineText(input) {
+    return Number(input && input.maxLines || 1) <= 1;
+  }
+
+  function textLines(input, value) {
+    const text = String(value || "");
+    if (isSingleLineText(input)) return [text.replace(/\r?\n/g, " ")];
+    return text.split(/\r?\n/);
+  }
+
+  function textFontSize(input, cssOrBox, textValue, fontFamily) {
     const rawHeight =
       typeof cssOrBox.height === "string" ? Number(cssOrBox.height.replace("px", "")) : Number(cssOrBox.height);
     const rawWidth =
       typeof cssOrBox.width === "string" ? Number(cssOrBox.width.replace("px", "")) : Number(cssOrBox.width);
-    const text = String(textValue || "");
-    const explicitLines = text.split(/\r?\n/);
-    const lineCount = Math.max(1, explicitLines.length);
-    const longestLine = explicitLines.reduce((longest, line) => Math.max(longest, line.length), 1);
-    const heightFit = ((rawHeight || 24) / (lineCount * TEXT_LINE_HEIGHT)) * textScaleFor(input.id);
-    const widthFit = longestLine ? ((rawWidth || 120) / Math.max(1, longestLine * 0.58)) * textScaleFor(input.id) : heightFit;
-    const base = Math.min((rawHeight || 24) * 0.62, heightFit, widthFit);
-    return Math.max(8, Math.min(48, base));
+    const lines = textLines(input, textValue);
+    const maxFont = Math.max(4, Math.min(48, ((rawHeight || 24) / Math.max(1, lines.length * TEXT_LINE_HEIGHT)) * textScaleFor(input.id)));
+    let size = maxFont;
+    if (textMeasureContext) {
+      textMeasureContext.font = `${size}px ${fontFamily || activeFont(input)}`;
+      const measured = Math.max(1, ...lines.map((line) => textMeasureContext.measureText(line || " ").width));
+      size = Math.min(size, size * ((rawWidth || 120) * 0.98) / measured);
+    } else {
+      const longestLine = lines.reduce((longest, line) => Math.max(longest, line.length), 1);
+      size = Math.min(size, (rawWidth || 120) / Math.max(1, longestLine * 0.58));
+    }
+    return Math.max(4, Math.min(48, size));
   }
 
   function normalizeTextValue(value, input) {
@@ -382,20 +409,44 @@
     }
   }
 
-  function createControlGroup(title, required, instructions) {
+  function createControlGroup(title, required, instructions, value) {
     const section = document.createElement("section");
     section.className = "control-group";
     const header = document.createElement("div");
     header.className = "control-title";
-    header.innerHTML = `<h3>${escapeHtml(title)}</h3>${required ? '<span class="required">Required</span>' : ""}`;
+    const suffix = value ? `: ${value}` : "";
+    header.innerHTML = `<h3>${escapeHtml(title)}${escapeHtml(suffix)}${required ? "" : ' <span class="optional">(optional)</span>'}</h3>`;
     section.appendChild(header);
-    if (instructions) {
+    const help = visibleInstructions(instructions);
+    if (help) {
       const p = document.createElement("p");
       p.className = "instructions";
-      p.textContent = instructions;
+      p.textContent = help;
       section.appendChild(p);
     }
     return section;
+  }
+  function visibleInstructions(value) {
+    const text = String(value || "").trim();
+    const hidden = [
+      "Please check the spelling carefully.",
+      "'Why pay for shipping twice? Add the matching Pillow to your order now, complete the look, and save time & money.'",
+      "Why pay for shipping twice? Add the matching Pillow to your order now, complete the look, and save time & money.",
+      "If you don't fill it out, we'll make it according to the Amazon page time.",
+      "Why pay for shipping twice? Add the matching tapestry to your order now, complete the look, and save time & money."
+    ];
+    return hidden.includes(text) ? "" : text;
+  }
+  function isYesNoGroup(group) {
+    const labels = (group.options || []).map((option) => String(option.label || "").trim().toUpperCase()).sort();
+    return labels.length === 2 && labels[0] === "NO" && labels[1] === "YES";
+  }
+  function isTextChoiceGroup(group) {
+    const label = String(group.label || "");
+    return /(?:item\s+size|matching|tapestry|pillow|purchase)/i.test(label) && !isYesNoGroup(group);
+  }
+  function isBackgroundOptionGroup(group) {
+    return /background\s*color/i.test(`${group.label || ""} ${group.instructions || ""}`);
   }
 
   function escapeHtml(value) {
@@ -406,18 +457,35 @@
       .replace(/"/g, "&quot;");
   }
 
+  const COLLAPSED_OPTION_LIMIT = 10;
+
   function renderOptionGroup(group) {
     if (!isComponentVisible(group.id)) return null;
 
-    const section = createControlGroup(group.label, group.required, group.instructions);
+    const selectedValue = group.options.find((option) => option.id === state.selectedOptions[group.id])?.label || "";
+    const section = createControlGroup(group.label, group.required, group.instructions, selectedValue);
+    section.dataset.controlId = group.id;
     const hasImages = group.options.some((option) => option.thumbnailImage || option.overlayImage);
-    const renderAsGrid = group.displayHint !== "select";
+    const renderAsGrid = group.displayHint !== "select" || hasImages || isTextChoiceGroup(group);
 
     if (renderAsGrid) {
       const grid = document.createElement("div");
       grid.className = "option-grid";
+      if (isYesNoGroup(group)) grid.classList.add("is-yes-no");
+      if (isTextChoiceGroup(group)) grid.classList.add("is-text-choice");
+      const isMobile = window.matchMedia && window.matchMedia("(max-width: 560px)").matches;
+      const shouldCollapse = !isMobile && group.options.length > COLLAPSED_OPTION_LIMIT;
+      const expanded = state.expandedOptionGroups[group.id] === true;
+      if (shouldCollapse && !expanded) grid.classList.add("is-collapsed");
+      if (expanded) grid.classList.add("is-expanded");
 
-      for (const option of group.options) {
+      const promotedOption = group.options.find((option) => option.id === state.promotedOptionIds[group.id]);
+      const primaryOptions = shouldCollapse
+        ? [...(promotedOption ? [promotedOption] : []), ...group.options.filter((option) => option.id !== promotedOption?.id)].slice(0, COLLAPSED_OPTION_LIMIT)
+        : group.options;
+      const visibleOptions = shouldCollapse ? primaryOptions : group.options;
+      const optionItems = !group.required ? [{ id: "", label: "No selection", cost: 0, noSelection: true }, ...visibleOptions] : visibleOptions;
+      for (const option of optionItems) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "option-card";
@@ -434,15 +502,80 @@
           ${option.cost ? `<span class="option-cost">${formatMoney(option.cost)}</span>` : ""}
         `;
         button.addEventListener("click", () => {
+          const scrollTop = window.scrollY;
+          const scrollLeft = grid.scrollLeft;
           state.selectedOptions[group.id] = option.id;
+          delete state.promotedOptionIds[group.id];
           evaluateConditionals();
           calculatePrice();
           renderAll();
+          requestAnimationFrame(() => {
+            window.scrollTo(0, scrollTop);
+            const nextGrid = elements.controls.querySelector(`[data-control-id="${CSS.escape(group.id)}"] .option-grid`);
+            if (nextGrid) nextGrid.scrollLeft = scrollLeft;
+            setTimeout(() => {
+              window.scrollTo(0, scrollTop);
+              const nextGrid = elements.controls.querySelector(`[data-control-id="${CSS.escape(group.id)}"] .option-grid`);
+              if (nextGrid) nextGrid.scrollLeft = scrollLeft;
+            }, 0);
+          });
         });
         grid.appendChild(button);
       }
 
       section.appendChild(grid);
+      if (shouldCollapse) {
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "option-toggle secondary-button";
+        toggle.textContent = expanded ? "See less" : `See all ${group.options.length} options`;
+        toggle.addEventListener("click", () => {
+          const scrollTop = window.scrollY;
+          state.expandedOptionGroups[group.id] = !state.expandedOptionGroups[group.id];
+          renderAll();
+          requestAnimationFrame(() => {
+            window.scrollTo(0, scrollTop);
+            positionOptionLists();
+            setTimeout(() => { window.scrollTo(0, scrollTop); positionOptionLists(); }, 0);
+          });
+        });
+        section.appendChild(toggle);
+        if (expanded) {
+          const list = document.createElement("div");
+          list.className = "option-list";
+          const primaryIds = new Set(primaryOptions.map((option) => option.id));
+          for (const option of group.options.filter((option) => !primaryIds.has(option.id))) {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "option-row";
+            row.classList.toggle("is-selected", state.selectedOptions[group.id] === option.id);
+            const image = option.thumbnailImage || option.overlayImage;
+            row.innerHTML = `${image ? `<img src="${assetUrl(image.url)}" alt="">` : '<span class="option-row-icon"></span>'}<span>${escapeHtml(option.label)}</span>`;
+            row.addEventListener("click", () => {
+              const scrollTop = window.scrollY;
+              const scrollLeft = grid.scrollLeft;
+              state.selectedOptions[group.id] = option.id;
+              state.promotedOptionIds[group.id] = option.id;
+              state.expandedOptionGroups[group.id] = false;
+              evaluateConditionals();
+              calculatePrice();
+              renderAll();
+              requestAnimationFrame(() => {
+                window.scrollTo(0, scrollTop);
+                const nextGrid = elements.controls.querySelector(`[data-control-id="${CSS.escape(group.id)}"] .option-grid`);
+                if (nextGrid) nextGrid.scrollLeft = scrollLeft;
+                setTimeout(() => {
+                  window.scrollTo(0, scrollTop);
+                  const nextGrid = elements.controls.querySelector(`[data-control-id="${CSS.escape(group.id)}"] .option-grid`);
+                  if (nextGrid) nextGrid.scrollLeft = scrollLeft;
+                }, 0);
+              });
+            });
+            list.appendChild(row);
+          }
+          section.appendChild(list);
+        }
+      }
     } else {
       const field = document.createElement("div");
       field.className = "control-field";
@@ -688,46 +821,25 @@
     const section = createControlGroup(group.label, false, group.instructions);
     const field = document.createElement("div");
     field.className = "control-field";
-    const select = document.createElement("select");
-    select.className = "font-select";
-    for (const font of group.options) {
-      ensureFontLoaded(font);
-      const option = document.createElement("option");
-      option.value = font.id;
-      option.textContent = font.family;
-      option.style.fontFamily = cssFontFamily(font.family);
-      option.selected = state.selectedFonts[group.id] === font.id;
-      select.appendChild(option);
-    }
-    const applySelectedFontStyle = () => {
-      const selected = group.options.find((font) => font.id === state.selectedFonts[group.id]);
-      select.style.fontFamily = selected ? cssFontFamily(selected.family) : "";
-    };
-    applySelectedFontStyle();
-    select.addEventListener("change", () => {
-      state.selectedFonts[group.id] = select.value;
-      applySelectedFontStyle();
-      renderPreview();
-      updateExportOutput(false);
-      syncFontChoices();
-    });
-    field.appendChild(select);
-    const preview = document.createElement("div");
-    preview.className = "font-preview";
-    preview.textContent = "AaBbCc 123";
-    const selected = group.options.find((font) => font.id === state.selectedFonts[group.id]);
-    if (selected) preview.style.fontFamily = cssFontFamily(selected.family);
-    select.addEventListener("change", () => {
-      const next = group.options.find((font) => font.id === state.selectedFonts[group.id]);
-      preview.style.fontFamily = next ? cssFontFamily(next.family) : "";
-    });
-    field.appendChild(preview);
+
+    const dropdown = document.createElement("details");
+    dropdown.className = "font-dropdown";
+    const summary = document.createElement("summary");
+    const selectedFont = group.options.find((font) => font.id === state.selectedFonts[group.id]) || group.options[0];
+    summary.textContent = selectedFont ? selectedFont.family : "Select font";
+    if (selectedFont) summary.style.fontFamily = cssFontFamily(selectedFont.family);
+    dropdown.appendChild(summary);
 
     const choiceList = document.createElement("div");
     choiceList.className = "font-choice-list";
     function syncFontChoices() {
       for (const button of choiceList.querySelectorAll(".font-choice")) {
         button.classList.toggle("is-selected", button.dataset.fontId === state.selectedFonts[group.id]);
+      }
+      const selected = group.options.find((font) => font.id === state.selectedFonts[group.id]);
+      if (selected) {
+        summary.textContent = selected.family;
+        summary.style.fontFamily = cssFontFamily(selected.family);
       }
     }
     for (const font of group.options) {
@@ -739,17 +851,18 @@
       button.style.fontFamily = cssFontFamily(font.family);
       button.addEventListener("click", () => {
         state.selectedFonts[group.id] = font.id;
-        select.value = font.id;
-        applySelectedFontStyle();
-        preview.style.fontFamily = cssFontFamily(font.family);
+        ensureFontLoaded(font);
         syncFontChoices();
+        dropdown.open = false;
         renderPreview();
         updateExportOutput(false);
+        if (document.fonts) document.fonts.ready.then(renderPreview).catch(() => {});
       });
       choiceList.appendChild(button);
     }
     syncFontChoices();
-    field.appendChild(choiceList);
+    dropdown.appendChild(choiceList);
+    field.appendChild(dropdown);
     section.appendChild(field);
     return section;
   }
@@ -825,6 +938,34 @@
 
     elements.controls.className = "";
     for (const control of controls) elements.controls.appendChild(control);
+    requestAnimationFrame(positionOptionLists);
+  }
+
+  function positionOptionLists() {
+    const viewportTop = 0;
+    const viewportBottom = window.innerHeight;
+    elements.controls.querySelectorAll(".option-list").forEach((list) => {
+      const control = list.closest(".control-group");
+      const toggle = control && control.querySelector(".option-toggle");
+      if (!control || !toggle) return;
+      list.classList.remove("is-above", "is-below");
+      list.style.top = "";
+      list.style.bottom = "";
+      list.style.maxHeight = "";
+      const toggleRect = toggle.getBoundingClientRect();
+      const availableBelow = viewportBottom - toggleRect.bottom - 16;
+      const availableAbove = toggleRect.top - viewportTop - 16;
+      const useBelow = availableBelow >= 220 || availableBelow >= availableAbove;
+      const available = Math.max(96, useBelow ? availableBelow : availableAbove);
+      list.style.maxHeight = `${Math.min(420, available)}px`;
+      if (useBelow) {
+        list.classList.add("is-below");
+        list.style.top = `${toggle.offsetTop + toggle.offsetHeight + 6}px`;
+      } else {
+        list.classList.add("is-above");
+        list.style.bottom = `${control.offsetHeight - toggle.offsetTop + 6}px`;
+      }
+    });
   }
 
   function renderPreview() {
@@ -836,7 +977,7 @@
 
     if (baseImage || productImage) {
       const img = document.createElement("img");
-      img.className = "preview-layer preview-fill";
+      img.className = "preview-layer preview-fill preview-base";
       img.alt = "";
       img.src = assetUrl((baseImage && baseImage.url) || productImage);
       elements.stage.appendChild(img);
@@ -847,76 +988,85 @@
       elements.stage.appendChild(placeholder);
     }
 
-    for (const entry of orderedRenderableControls()) {
-      if (entry.type === "option") {
-        const group = entry.item;
-        if (!isComponentVisible(group.id)) continue;
-        const option = selectedOption(group);
-        if (!option || !option.overlayImage) continue;
-        const overlay = document.createElement("img");
-        overlay.className = "preview-layer preview-fill";
-        overlay.alt = "";
-        overlay.src = assetUrl(option.overlayImage.url);
-        elements.stage.appendChild(overlay);
-      }
+    const controls = orderedRenderableControls();
+    for (const entry of controls.filter((item) => item.type === "option" && isBackgroundOptionGroup(item.item))) {
+      const group = entry.item;
+      if (!isComponentVisible(group.id)) continue;
+      const option = selectedOption(group);
+      if (!option || !option.overlayImage) continue;
+      const overlay = document.createElement("img");
+      overlay.className = "preview-layer preview-fill preview-background";
+      overlay.alt = "";
+      overlay.src = assetUrl(option.overlayImage.url);
+      elements.stage.appendChild(overlay);
+    }
 
-      if (entry.type === "image") {
-        const input = entry.item;
-        if (!isControlVisible(input)) continue;
-        const value = state.imageValues[input.id];
-        if (!value || !value.objectUrl || !input.placementId) continue;
-        const layer = document.createElement("div");
-        layer.className = "placement-layer";
-        layer.dataset.editId = `image:${input.id}`;
-        layer.classList.toggle("is-active-edit", state.activeEditId === `image:${input.id}`);
-        const { placement, css } = placeStyle(input.placementId);
-        applyBoxStyle(layer, css);
-        const img = document.createElement("img");
-        img.alt = "";
-        img.src = value.objectUrl;
-        img.className = "inner-image";
-        applyImageTransform(img, input.id);
-        layer.appendChild(img);
-        if (placement && placement.isFreePlacement) {
-          layer.classList.add("is-draggable");
-          layer.addEventListener("pointerdown", () => {
-            setActiveEdit(`image:${input.id}`);
-          });
-          attachImageDrag(layer, img, input);
-        }
-        elements.stage.appendChild(layer);
+    for (const entry of controls.filter((item) => item.type === "image")) {
+      const input = entry.item;
+      if (!isControlVisible(input)) continue;
+      const value = state.imageValues[input.id];
+      if (!value || !value.objectUrl || !input.placementId) continue;
+      const layer = document.createElement("div");
+      layer.className = "placement-layer image-layer";
+      layer.dataset.editId = `image:${input.id}`;
+      layer.classList.toggle("is-active-edit", state.activeEditId === `image:${input.id}`);
+      const { placement, css } = placeStyle(input.placementId);
+      applyBoxStyle(layer, css);
+      const img = document.createElement("img");
+      img.alt = "";
+      img.src = value.objectUrl;
+      img.className = "inner-image";
+      applyImageTransform(img, input.id);
+      layer.appendChild(img);
+      if (placement && placement.isFreePlacement) {
+        layer.classList.add("is-draggable");
+        layer.addEventListener("pointerdown", () => {
+          setActiveEdit(`image:${input.id}`);
+        });
+        attachImageDrag(layer, img, input);
       }
+      elements.stage.appendChild(layer);
+    }
 
-      if (entry.type === "text") {
-        const input = entry.item;
-        if (!isControlVisible(input)) continue;
-        const text = state.textValues[input.id] || "";
-        if (!text || !input.placementId) continue;
-        const layer = document.createElement("div");
-        layer.className = "placement-layer";
-        layer.dataset.editId = `text:${input.id}`;
-        layer.classList.toggle("is-active-edit", state.activeEditId === `text:${input.id}`);
-        const { placement, css } = placeStyle(input.placementId);
-        applyBoxStyle(layer, css);
-        layer.textContent = text;
-        layer.style.color = activeColor(input);
-        layer.style.fontFamily = activeFont(input);
-        layer.style.fontSize = `${textFontSize(input, css, text)}px`;
-        layer.style.lineHeight = String(TEXT_LINE_HEIGHT);
-        if (placement && placement.isFreePlacement) {
-          layer.classList.add("is-draggable");
-          layer.addEventListener("pointerdown", () => {
-            setActiveEdit(`text:${input.id}`);
-          });
-          attachDrag(layer, input.placementId);
-        }
-        elements.stage.appendChild(layer);
-      }
+    for (const entry of controls.filter((item) => item.type === "option" && !isBackgroundOptionGroup(item.item))) {
+      const group = entry.item;
+      if (!isComponentVisible(group.id)) continue;
+      const option = selectedOption(group);
+      if (!option || !option.overlayImage) continue;
+      const overlay = document.createElement("img");
+      overlay.className = "preview-layer preview-fill preview-overlay";
+      overlay.alt = "";
+      overlay.src = assetUrl(option.overlayImage.url);
+      elements.stage.appendChild(overlay);
+    }
+
+    for (const entry of controls.filter((item) => item.type === "text")) {
+      const input = entry.item;
+      if (!isControlVisible(input)) continue;
+      const text = state.textValues[input.id] || "";
+      if (!text || !input.placementId) continue;
+      const layer = document.createElement("div");
+      layer.className = `placement-layer text-layer ${isSingleLineText(input) ? "is-single-line" : ""}`;
+      layer.dataset.editId = `text:${input.id}`;
+      layer.classList.toggle("is-active-edit", state.activeEditId === `text:${input.id}`);
+      const { placement, css } = placeStyle(input.placementId);
+      applyBoxStyle(layer, css);
+      layer.textContent = isSingleLineText(input) ? text.replace(/\r?\n/g, " ") : text;
+      layer.style.color = activeColor(input);
+      const fontFamily = activeFont(input);
+      layer.style.fontFamily = fontFamily;
+      layer.style.fontSize = `${textFontSize(input, css, text, fontFamily)}px`;
+      layer.style.lineHeight = String(TEXT_LINE_HEIGHT);
+      layer.addEventListener("pointerdown", () => {
+        setActiveEdit(`text:${input.id}`);
+      });
+      attachDrag(layer, input.placementId);
+      elements.stage.appendChild(layer);
     }
 
     if (surface && surface.maskImage) {
       const mask = document.createElement("img");
-      mask.className = "preview-layer preview-fill";
+      mask.className = "preview-layer preview-fill preview-mask";
       mask.alt = "";
       mask.src = assetUrl(surface.maskImage.url);
       elements.stage.appendChild(mask);
@@ -1210,37 +1360,44 @@
     const baseUrl = (surface && surface.baseImage && surface.baseImage.url) || state.config.product.productImageUrl;
     if (baseUrl) await drawImage(ctx, baseUrl, 0, 0, size, size, "contain");
 
-    for (const entry of orderedRenderableControls()) {
-      if (entry.type === "option") {
-        const group = entry.item;
-        if (!isComponentVisible(group.id)) continue;
-        const option = selectedOption(group);
-        if (option && option.overlayImage) await drawImage(ctx, option.overlayImage.url, 0, 0, size, size, "contain");
-      }
+    const controls = orderedRenderableControls();
+    for (const entry of controls.filter((item) => item.type === "option" && isBackgroundOptionGroup(item.item))) {
+      const group = entry.item;
+      if (!isComponentVisible(group.id)) continue;
+      const option = selectedOption(group);
+      if (option && option.overlayImage) await drawImage(ctx, option.overlayImage.url, 0, 0, size, size, "contain");
+    }
 
-      if (entry.type === "image") {
-        const input = entry.item;
-        if (!isControlVisible(input)) continue;
-        const value = state.imageValues[input.id];
-        if (!value || !value.objectUrl || !input.placementId) continue;
-        const box = state.placementOverrides[input.placementId];
-        await drawImage(ctx, value.objectUrl, box.x, box.y, box.width, box.height, "cover", state.imageTransforms[input.id]);
-      }
+    for (const entry of controls.filter((item) => item.type === "image")) {
+      const input = entry.item;
+      if (!isControlVisible(input)) continue;
+      const value = state.imageValues[input.id];
+      if (!value || !value.objectUrl || !input.placementId) continue;
+      const box = state.placementOverrides[input.placementId];
+      await drawImage(ctx, value.objectUrl, box.x, box.y, box.width, box.height, "cover", state.imageTransforms[input.id]);
+    }
 
-      if (entry.type === "text") {
-        const input = entry.item;
-        if (!isControlVisible(input)) continue;
-        const text = state.textValues[input.id] || "";
-        if (!text || !input.placementId) continue;
-        const box = state.placementOverrides[input.placementId];
-        ctx.save();
-        ctx.fillStyle = activeColor(input);
-        ctx.font = `${textFontSize(input, box, text)}px ${activeFont(input)}`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        wrapCanvasText(ctx, text, box.x + box.width / 2, box.y + box.height / 2, box.width, box.height);
-        ctx.restore();
-      }
+    for (const entry of controls.filter((item) => item.type === "option" && !isBackgroundOptionGroup(item.item))) {
+      const group = entry.item;
+      if (!isComponentVisible(group.id)) continue;
+      const option = selectedOption(group);
+      if (option && option.overlayImage) await drawImage(ctx, option.overlayImage.url, 0, 0, size, size, "contain");
+    }
+
+    for (const entry of controls.filter((item) => item.type === "text")) {
+      const input = entry.item;
+      if (!isControlVisible(input)) continue;
+      const text = state.textValues[input.id] || "";
+      if (!text || !input.placementId) continue;
+      const box = state.placementOverrides[input.placementId];
+      ctx.save();
+      ctx.fillStyle = activeColor(input);
+      const fontFamily = activeFont(input);
+      ctx.font = `${textFontSize(input, box, text, fontFamily)}px ${fontFamily}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      drawCanvasText(ctx, input, text, box.x + box.width / 2, box.y + box.height / 2, box.width, box.height);
+      ctx.restore();
     }
 
     if (surface && surface.maskImage) {
@@ -1253,7 +1410,11 @@
     a.click();
   }
 
-  function wrapCanvasText(ctx, text, centerX, centerY, maxWidth, maxHeight) {
+  function drawCanvasText(ctx, input, text, centerX, centerY, maxWidth, maxHeight) {
+    if (isSingleLineText(input)) {
+      ctx.fillText(String(text || "").replace(/\r?\n/g, " "), centerX, centerY, maxWidth);
+      return;
+    }
     const explicitLines = text.split(/\r?\n/);
     const lines = [];
     for (const line of explicitLines) {

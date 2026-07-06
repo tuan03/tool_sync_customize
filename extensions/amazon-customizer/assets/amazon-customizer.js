@@ -1,6 +1,8 @@
 (function () {
   "use strict";
   const instances = new WeakMap();
+  const loadedFonts = new Set();
+  const COLLAPSED_OPTION_LIMIT = 10;
   const q = (root, selector) => root.querySelector(selector);
   const escapeHtml = (value) => String(value == null ? "" : value).replace(/[&<>"']/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
 
@@ -17,9 +19,28 @@
     }
     for (const group of config.fontGroups || []) fonts[group.id] = group.defaultFontId || (group.options[0] && group.options[0].id) || "";
     for (const group of config.colorGroups || []) colors[group.id] = group.defaultColorId || (group.options[0] && group.options[0].id) || "";
-    return { options, fonts, colors, texts: {}, images: {}, imageTransforms: {}, textTransforms: {}, placementOffsets: {}, visible: {}, errors: {}, activeEdit: "" };
+    return { options, fonts, colors, texts: {}, images: {}, imageTransforms: {}, textTransforms: {}, placementOffsets: {}, visible: {}, errors: {}, activeEdit: "", expandedOptionGroups: {}, promotedOptionIds: {} };
   }
   function formatMoney(value) { return `${Number(value || 0).toLocaleString()} VND`; }
+  function cssFontFamily(family) {
+    return `"${String(family || "").replace(/"/g, '\\"')}", Arial, Helvetica, sans-serif`;
+  }
+  function ensureFontLoaded(font) {
+    if (!font || !font.family || loadedFonts.has(font.family)) return;
+    loadedFonts.add(font.family);
+    if (font.fontUrl) {
+      const style = document.createElement("style");
+      style.textContent = `@font-face{font-family:${JSON.stringify(font.family)};src:url(${JSON.stringify(font.fontUrl)});font-display:swap}`;
+      document.head.appendChild(style);
+      return;
+    }
+    if (/googlefont/i.test(font.fontType || "")) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.family).replace(/%20/g, "+")}&display=swap`;
+      document.head.appendChild(link);
+    }
+  }
   function activeStyleGroup(instance, item, groups) {
     let best = groups && groups[0], bestScore = -1;
     const ancestors = new Set(item.ancestors || []);
@@ -36,12 +57,35 @@
     if (input.maxLength) text = text.slice(0, input.maxLength);
     return text;
   }
-  function textFontSize(input, boxStyles, value) {
+  const textMeasureCanvas = document.createElement("canvas");
+  const textMeasureContext = textMeasureCanvas.getContext("2d");
+  function isSingleLineText(input) {
+    return Number(input && input.maxLines || 1) <= 1;
+  }
+  function textLines(input, value) {
+    const text = String(value || "");
+    if (isSingleLineText(input)) return [text.replace(/\r?\n/g, " ")];
+    return text.split(/\r?\n/);
+  }
+  function textFontSize(instance, input, boxStyles, value, fontFamily) {
     const width = Number(String(boxStyles.width || "100").replace("%", "")) || 100;
     const height = Number(String(boxStyles.height || "20").replace("%", "")) || 20;
-    const lines = String(value || "").split(/\r?\n/);
-    const longest = lines.reduce((max, line) => Math.max(max, line.length), 1);
-    return `${Math.max(10, Math.min(34, height * 2.7, width * 1.55 / Math.max(1, longest * 0.08)))}px`;
+    const stage = q(instance.modal, ".amzcustom-stage");
+    const stageSize = stage && stage.clientWidth ? stage.clientWidth : 620;
+    const boxWidth = Math.max(1, stageSize * width / 100);
+    const boxHeight = Math.max(1, stageSize * height / 100);
+    const lines = textLines(input, value);
+    const maxFont = Math.max(4, Math.min(34, boxHeight / Math.max(1, lines.length * 1.18)));
+    let size = maxFont;
+    if (textMeasureContext) {
+      textMeasureContext.font = `${size}px ${fontFamily || "Arial"}`;
+      const measured = Math.max(1, ...lines.map((line) => textMeasureContext.measureText(line || " ").width));
+      size = Math.min(size, size * (boxWidth * 0.98) / measured);
+    } else {
+      const longest = lines.reduce((max, line) => Math.max(max, line.length), 1);
+      size = Math.min(size, boxWidth / Math.max(1, longest * 0.58));
+    }
+    return `${Math.max(4, size)}px`;
   }
   function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
   function transformStyle(transform) {
@@ -90,6 +134,27 @@
     instance.state.activeEdit = "";
     renderControls(instance);
   }
+  function scheduleFontReadyRender(instance) {
+    if (!document.fonts || instance.fontReadyRenderQueued) return;
+    instance.fontReadyRenderQueued = true;
+    document.fonts.ready.then(() => {
+      instance.fontReadyRenderQueued = false;
+      renderPreview(instance);
+    }).catch(() => {
+      instance.fontReadyRenderQueued = false;
+    });
+  }
+  function isBackgroundOptionGroup(group) {
+    return /background\s*color/i.test(`${group.label || ""} ${group.instructions || ""}`);
+  }
+  function renderOptionOverlays(instance, shouldRender, className) {
+    const stage = q(instance.modal, ".amzcustom-stage");
+    for (const group of instance.config.optionGroups || []) {
+      if (!visible(instance, group) || !shouldRender(group)) continue;
+      const overlay = selected(group, instance.state)?.overlayImage?.url;
+      if (overlay) stage.insertAdjacentHTML("beforeend", `<img class="${escapeHtml(className || "amzcustom-stage-overlay")}" alt="" src="${escapeHtml(asset(overlay))}">`);
+    }
+  }
 
   function renderPreview(instance) {
     const stage = q(instance.modal, ".amzcustom-stage");
@@ -97,37 +162,36 @@
     const config = instance.config, state = instance.state;
     const surface = (config.surfaces || [])[0];
     const base = surface?.baseImage?.url || config.product.productImageUrl;
-    if (base) stage.insertAdjacentHTML("beforeend", `<img alt="" src="${escapeHtml(asset(base))}">`);
-    for (const group of config.optionGroups || []) {
-      if (!visible(instance, group)) continue;
-      const overlay = selected(group, state)?.overlayImage?.url;
-      if (overlay) stage.insertAdjacentHTML("beforeend", `<img alt="" src="${escapeHtml(asset(overlay))}">`);
-    }
+    if (base) stage.insertAdjacentHTML("beforeend", `<img class="amzcustom-stage-base" alt="" src="${escapeHtml(asset(base))}">`);
+    renderOptionOverlays(instance, isBackgroundOptionGroup, "amzcustom-stage-background");
     for (const input of config.imageInputs || []) {
       if (!visible(instance, input) || !state.images[input.id]) continue;
       const editId = `image:${input.id}`;
-      const layer = document.createElement("div"); layer.className = `amzcustom-layer ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, box(config, input.placementId, state));
+      const layer = document.createElement("div"); layer.className = `amzcustom-layer amzcustom-image-layer ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, box(config, input.placementId, state));
       const transform = state.imageTransforms[input.id] || { x: 0, y: 0, scale: 1, rotation: 0 };
       const fit = fitBoxStyle(state.images[input.id]);
       layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="${fit}transform:${transformStyle(transform)}"><img alt="" src="${escapeHtml(state.images[input.id].dataUrl)}"></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box" style="${fit}transform:${transformStyle(transform)}"><div class="amzcustom-layer-tools"><button type="button" data-layer-action="done">Done</button><button type="button" data-layer-action="replace">Replace</button><button type="button" data-layer-action="delete">Delete</button></div><button type="button" class="amzcustom-rotate-handle" data-transform-handle="rotate" aria-label="Rotate"></button><button type="button" class="amzcustom-resize-handle nw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle ne" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle sw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle se" data-transform-handle="resize" aria-label="Resize"></button></div>` : ""}`;
       stage.appendChild(layer);
     }
+    renderOptionOverlays(instance, (group) => !isBackgroundOptionGroup(group), "amzcustom-stage-overlay");
     for (const input of config.textInputs || []) {
       if (!visible(instance, input) || !state.texts[input.id]) continue;
       const boxStyles = box(config, input.placementId, state);
       const editId = `text:${input.id}`;
-      const layer = document.createElement("div"); layer.className = `amzcustom-layer amzcustom-text-layer ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, boxStyles);
+      const layer = document.createElement("div"); layer.className = `amzcustom-layer amzcustom-text-layer ${isSingleLineText(input) ? "is-single-line" : ""} ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, boxStyles);
       const fontGroup = activeStyleGroup(instance, input, config.fontGroups || []);
       const colorGroup = activeStyleGroup(instance, input, config.colorGroups || []);
       const font = fontGroup?.options.find((item) => item.id === state.fonts[fontGroup.id]);
       const color = colorGroup?.options.find((item) => item.id === state.colors[colorGroup.id]);
+      ensureFontLoaded(font);
       const transform = state.textTransforms[input.id] || { x: 0, y: 0 };
-      layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="transform:${transformStyle({ ...transform, scale: 1, rotation: 0 })}"><span>${escapeHtml(state.texts[input.id])}</span></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box" style="transform:${transformStyle({ ...transform, scale: 1, rotation: 0 })}"><div class="amzcustom-layer-tools"><button type="button" data-layer-action="done">Done</button><button type="button" data-layer-action="delete">Delete</button></div></div>` : ""}`;
-      layer.style.fontFamily = font?.family || "Arial"; layer.style.color = color?.value || "#000";
-      layer.style.fontSize = textFontSize(input, boxStyles, state.texts[input.id]);
+      layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="transform:${transformStyle({ ...transform, scale: 1, rotation: 0 })}"><span>${escapeHtml(isSingleLineText(input) ? state.texts[input.id].replace(/\r?\n/g, " ") : state.texts[input.id])}</span></div></div>`;
+      const fontFamily = cssFontFamily(font?.family || "Arial");
+      layer.style.fontFamily = fontFamily; layer.style.color = color?.value || "#000";
+      layer.style.fontSize = textFontSize(instance, input, boxStyles, state.texts[input.id], fontFamily);
       stage.appendChild(layer);
     }
-    if (surface?.maskImage?.url) stage.insertAdjacentHTML("beforeend", `<img alt="" src="${escapeHtml(asset(surface.maskImage.url))}">`);
+    if (surface?.maskImage?.url) stage.insertAdjacentHTML("beforeend", `<img class="amzcustom-stage-mask" alt="" src="${escapeHtml(asset(surface.maskImage.url))}">`);
     bindPreviewDrag(instance);
     q(instance.modal, ".amzcustom-price").textContent = `Phụ phí: ${surcharge(instance).toLocaleString()} VND`;
   }
@@ -135,29 +199,84 @@
     const stage=q(instance.modal,".amzcustom-stage"), size=instance.config.product.previewSize||400;
     stage.querySelectorAll(".amzcustom-layer[data-edit-id]").forEach((layer)=>{
       layer.style.cursor="move";
-      layer.addEventListener("pointerdown",(event)=>{ if (event.target.closest("[data-layer-action]")) return; event.preventDefault(); instance.state.activeEdit = layer.dataset.editId; const [type,id]=layer.dataset.editId.split(":"); const start={x:event.clientX,y:event.clientY}; const rect=layer.getBoundingClientRect(); const box=layer.querySelector(".amzcustom-edit-box") || layer.querySelector(".amzcustom-transform-box"); const boxRect=box.getBoundingClientRect(); const bucket=type==="image"?instance.state.imageTransforms:instance.state.textTransforms; const original={x:0,y:0,scale:1,rotation:0,...(bucket[id]||{})}; const center={x:boxRect.left+boxRect.width/2,y:boxRect.top+boxRect.height/2}; const startDistance=Math.hypot(start.x-center.x,start.y-center.y)||1; const startAngle=Math.atan2(start.y-center.y,start.x-center.x)*180/Math.PI; const handle=event.target.closest("[data-transform-handle]")?.dataset.transformHandle || "move";
+      layer.addEventListener("pointerdown",(event)=>{ if (event.target.closest("[data-layer-action]")) return; event.preventDefault(); instance.state.activeEdit = layer.dataset.editId; stage.querySelectorAll(".amzcustom-layer.is-active-edit").forEach((item)=>item.classList.remove("is-active-edit")); layer.classList.add("is-active-edit"); const [type,id]=layer.dataset.editId.split(":"); const start={x:event.clientX,y:event.clientY}; const rect=layer.getBoundingClientRect(); const box=layer.querySelector(".amzcustom-edit-box") || layer.querySelector(".amzcustom-transform-box"); const boxRect=box.getBoundingClientRect(); const bucket=type==="image"?instance.state.imageTransforms:instance.state.textTransforms; const original={x:0,y:0,scale:1,rotation:0,...(bucket[id]||{})}; const center={x:boxRect.left+boxRect.width/2,y:boxRect.top+boxRect.height/2}; const startDistance=Math.hypot(start.x-center.x,start.y-center.y)||1; const startAngle=Math.atan2(start.y-center.y,start.x-center.x)*180/Math.PI; const handle=event.target.closest("[data-transform-handle]")?.dataset.transformHandle || "move";
         const move=(next)=>{ if (handle==="resize") { const distance=Math.hypot(next.clientX-center.x,next.clientY-center.y)||1; bucket[id]={...original,scale:clamp(original.scale*distance/startDistance,.3,4)}; } else if (handle==="rotate") { const angle=Math.atan2(next.clientY-center.y,next.clientX-center.x)*180/Math.PI; bucket[id]={...original,rotation:Math.round(original.rotation+angle-startAngle)}; } else { const dx=(next.clientX-start.x)/rect.width*100, dy=(next.clientY-start.y)/rect.height*100; bucket[id]={...original,x:clamp(original.x+dx,-50,50),y:clamp(original.y+dy,-50,50)}; } layer.querySelectorAll(".amzcustom-transform-box,.amzcustom-edit-box").forEach((item)=>{ item.style.transform=transformStyle(bucket[id]); });};
         const up=()=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);renderPreview(instance);};window.addEventListener("pointermove",move);window.addEventListener("pointerup",up);
       });
     });
   }
-  function controlHeader(item) {
-    return `<div class="amzcustom-title"><span>${escapeHtml(item.label)}</span>${item.required ? '<em>Required</em>' : ""}</div>${item.instructions ? `<p class="amzcustom-help">${escapeHtml(item.instructions)}</p>` : ""}`;
+  function controlHeader(item, value) {
+    const suffix = value ? `: ${value}` : "";
+    const help = visibleInstructions(item.instructions);
+    return `<div class="amzcustom-title"><span>${escapeHtml(item.label)}${escapeHtml(suffix)}</span>${item.required ? "" : '<em>(optional)</em>'}</div>${help ? `<p class="amzcustom-help">${escapeHtml(help)}</p>` : ""}`;
+  }
+  function visibleInstructions(value) {
+    const text = String(value || "").trim();
+    const hidden = [
+      "Please check the spelling carefully.",
+      "'Why pay for shipping twice? Add the matching Pillow to your order now, complete the look, and save time & money.'",
+      "Why pay for shipping twice? Add the matching Pillow to your order now, complete the look, and save time & money.",
+      "If you don't fill it out, we'll make it according to the Amazon page time.",
+      "Why pay for shipping twice? Add the matching tapestry to your order now, complete the look, and save time & money."
+    ];
+    return hidden.includes(text) ? "" : text;
+  }
+  function isYesNoGroup(item) {
+    const labels = (item.options || []).map((option) => String(option.label || "").trim().toUpperCase()).sort();
+    return labels.length === 2 && labels[0] === "NO" && labels[1] === "YES";
+  }
+  function isTextChoiceGroup(item) {
+    const label = String(item.label || "");
+    return /(?:item\s+size|matching|tapestry|pillow|purchase)/i.test(label) && !isYesNoGroup(item);
+  }
+  function fontDropdownHtml(state, item) {
+    const selected = item.options.find((font) => font.id === state.fonts[item.id]) || item.options[0] || {};
+    return `<details class="amzcustom-font-dropdown"><summary style="font-family:${escapeHtml(cssFontFamily(selected.family || "Arial"))}"><span>${escapeHtml(selected.family || "Select font")}</span></summary><div class="amzcustom-fonts">${item.options.map((font) => { ensureFontLoaded(font); return `<button type="button" class="amzcustom-font ${state.fonts[item.id] === font.id ? "is-selected" : ""}" data-font="${escapeHtml(font.id)}" style="font-family:${escapeHtml(cssFontFamily(font.family))}">${escapeHtml(font.family)}</button>`; }).join("")}</div></details>`;
+  }
+  function imageActionButton(action, label, icon) {
+    const icons = {
+      edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+      done: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
+      replace: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8 12 3 7 8"/><path d="M12 3v12"/></svg>',
+      delete: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 15H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>'
+    };
+    return `<button type="button" data-image-action="${escapeHtml(action)}">${icons[icon] || ""}<span>${escapeHtml(label)}</span></button>`;
+  }
+  function optionChoicesHtml(state, item) {
+    const isMobile = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+    const shouldCollapse = !isMobile && item.options.length > COLLAPSED_OPTION_LIMIT;
+    const expanded = state.expandedOptionGroups[item.id] === true;
+    const promotedOption = item.options.find((option) => option.id === state.promotedOptionIds[item.id]);
+    const primaryOptions = shouldCollapse
+      ? [...(promotedOption ? [promotedOption] : []), ...item.options.filter((option) => option.id !== promotedOption?.id)].slice(0, COLLAPSED_OPTION_LIMIT)
+      : item.options;
+    const visibleOptions = shouldCollapse ? primaryOptions : item.options;
+    const optionItems = !item.required ? [{ id: "", label: "No selection", cost: 0, noSelection: true }, ...visibleOptions] : visibleOptions;
+    const choices = optionItems.map((option) => {
+      const img = option.thumbnailImage || option.overlayImage;
+      return `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="primary" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-stock-icon"></span>`}<span>${escapeHtml(option.label)}</span>${option.outOfStock ? "<small>Out of stock</small>" : option.cost ? `<small>+${formatMoney(option.cost)}</small>` : ""}</button>`;
+    }).join("");
+    const toggle = shouldCollapse ? `<button type="button" class="amzcustom-options-toggle" data-options-toggle="${escapeHtml(item.id)}">${expanded ? "See less" : `See all ${item.options.length} options`}</button>` : "";
+    const primaryIds = new Set(primaryOptions.map((option) => option.id));
+    const overflowOptions = shouldCollapse ? item.options.filter((option) => !primaryIds.has(option.id)) : [];
+    const overflow = shouldCollapse && expanded ? `<div class="amzcustom-options-list">${overflowOptions.map((option) => { const img = option.thumbnailImage || option.overlayImage; return `<button type="button" class="amzcustom-option-row ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="overflow" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-row-icon"></span>`}<span>${escapeHtml(option.label)}</span></button>`; }).join("")}</div>` : "";
+    return `<div class="amzcustom-choices ${isYesNoGroup(item) ? "is-yes-no" : ""} ${isTextChoiceGroup(item) ? "is-text-choice" : ""} ${shouldCollapse ? "is-collapsed" : ""} ${expanded ? "is-expanded" : ""}">${choices}</div>${toggle}${overflow}`;
   }
   function controlHtml(instance, type, item) {
     if (!visible(instance, item)) return "";
     const state = instance.state;
     if (type === "option") {
       const hasImages = item.options.some((option) => option.thumbnailImage || option.overlayImage);
-      if (item.displayHint === "choice-grid" || hasImages) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-choices">${item.options.map((option) => { const img = option.thumbnailImage || option.overlayImage; return `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-stock-icon"></span>`}<span>${escapeHtml(option.label)}</span>${option.outOfStock ? "<small>Out of stock</small>" : option.cost ? `<small>+${formatMoney(option.cost)}</small>` : ""}</button>`; }).join("")}</div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
-      return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(option.cost)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      const selectedValue = item.options.find((option) => option.id === state.options[item.id])?.label || "";
+      if (item.displayHint === "choice-grid" || hasImages || isTextChoiceGroup(item)) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(option.cost)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
     if (type === "text") {
       const value = state.texts[item.id] || "";
       return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}${item.maxLines > 1 ? `<textarea maxlength="${item.maxLength || ""}" rows="${Math.min(item.maxLines || 3, 5)}">${escapeHtml(value)}</textarea>` : `<input type="text" maxlength="${item.maxLength || ""}" value="${escapeHtml(value)}" placeholder="${escapeHtml(item.placeholder || "")}">`}<div class="amzcustom-meta"><span>${value.length}${item.maxLength ? `/${item.maxLength}` : ""}</span></div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
-    if (type === "image") { const active = state.activeEdit === `image:${item.id}`; return `<section class="amzcustom-control ${active ? "is-editing" : ""}" data-id="${item.id}">${controlHeader(item)}<input class="amzcustom-file ${state.images[item.id] ? "is-hidden" : ""}" type="file" accept="image/png,image/jpeg,image/webp">${state.images[item.id] ? `<div class="amzcustom-upload-row"><img src="${escapeHtml(state.images[item.id].dataUrl)}" alt=""><div class="amzcustom-actions"><button type="button" data-image-action="${active ? "done" : "edit"}">${active ? "Done" : "Edit"}</button><button type="button" data-image-action="replace">Replace</button><button type="button" data-image-action="delete">Delete</button></div></div>` : ""}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`; }
-    if (type === "font") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-fonts">${item.options.map((font) => `<button type="button" class="amzcustom-font ${state.fonts[item.id] === font.id ? "is-selected" : ""}" data-font="${escapeHtml(font.id)}" style="font-family:${escapeHtml(font.family)}">${escapeHtml(font.family)}</button>`).join("")}</div></section>`;
+    if (type === "image") { const active = state.activeEdit === `image:${item.id}`; return `<section class="amzcustom-control ${active ? "is-editing" : ""}" data-id="${item.id}">${controlHeader(item)}<input class="amzcustom-file ${state.images[item.id] ? "is-hidden" : ""}" type="file" accept="image/png,image/jpeg,image/webp">${state.images[item.id] ? `<div class="amzcustom-upload-row"><img src="${escapeHtml(state.images[item.id].dataUrl)}" alt=""><div class="amzcustom-actions">${imageActionButton(active ? "done" : "edit", active ? "Done" : "Edit", active ? "done" : "edit")}${imageActionButton("replace", "Replace", "replace")}${imageActionButton("delete", "Delete", "delete")}</div></div>` : ""}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`; }
+    if (type === "font") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}${fontDropdownHtml(state, item)}</section>`;
     if (type === "color") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-swatches">${item.options.map((color) => `<button type="button" class="amzcustom-swatch ${state.colors[item.id] === color.id ? "is-selected" : ""}" data-color="${escapeHtml(color.id)}" style="--swatch:${escapeHtml(color.value || "#fff")}" title="${escapeHtml(color.name)}"><span>${escapeHtml(color.name)}</span></button>`).join("")}</div></section>`;
     return "";
   }
@@ -176,13 +295,56 @@
       if (!seen.has(key)) html += controlHtml(instance, type, item);
     }
     q(instance.modal, ".amzcustom-controls").innerHTML = html;
-    bindControls(instance); renderPreview(instance);
+    bindControls(instance); renderPreview(instance); requestAnimationFrame(() => positionOptionLists(instance));
+  }
+  function positionOptionLists(instance) {
+    const dialog = q(instance.modal, ".amzcustom-dialog");
+    if (!dialog) return;
+    const dialogRect = dialog.getBoundingClientRect();
+    const headHeight = q(instance.modal, ".amzcustom-head")?.getBoundingClientRect().height || 0;
+    const footHeight = q(instance.modal, ".amzcustom-foot")?.getBoundingClientRect().height || 0;
+    q(instance.modal, ".amzcustom-controls")?.querySelectorAll(".amzcustom-options-list").forEach((list) => {
+      const control = list.closest(".amzcustom-control");
+      const toggle = control?.querySelector("[data-options-toggle]");
+      if (!control || !toggle) return;
+      list.classList.remove("is-above", "is-below");
+      list.style.top = "";
+      list.style.bottom = "";
+      list.style.maxHeight = "";
+      const toggleRect = toggle.getBoundingClientRect();
+      const availableBelow = dialogRect.bottom - footHeight - toggleRect.bottom - 12;
+      const availableAbove = toggleRect.top - dialogRect.top - headHeight - 12;
+      const useBelow = availableBelow >= 220 || availableBelow >= availableAbove;
+      const available = Math.max(96, useBelow ? availableBelow : availableAbove);
+      list.style.maxHeight = `${Math.min(420, available)}px`;
+      if (useBelow) {
+        list.classList.add("is-below");
+        list.style.top = `${toggle.offsetTop + toggle.offsetHeight + 6}px`;
+      } else {
+        list.classList.add("is-above");
+        list.style.bottom = `${control.offsetHeight - toggle.offsetTop + 6}px`;
+      }
+    });
   }
   function fileData(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => { const image = new Image(); image.onload = () => resolve({ file, dataUrl: reader.result, width: image.naturalWidth || 1, height: image.naturalHeight || 1 }); image.onerror = () => resolve({ file, dataUrl: reader.result, width: 1, height: 1 }); image.src = reader.result; }; reader.readAsDataURL(file); }); }
   function bindControls(instance) {
     if (instance.controlsBound) return;
     instance.controlsBound = true;
     q(instance.modal, ".amzcustom-controls").addEventListener("click", (event) => {
+      const optionsToggle = event.target.closest("[data-options-toggle]");
+      if (optionsToggle) {
+        const id = optionsToggle.dataset.optionsToggle;
+        const dialog = q(instance.modal, ".amzcustom-dialog");
+        const scrollTop = dialog ? dialog.scrollTop : null;
+        instance.state.expandedOptionGroups[id] = !instance.state.expandedOptionGroups[id];
+        renderControls(instance);
+        if (scrollTop != null) requestAnimationFrame(() => {
+          dialog.scrollTop = scrollTop;
+          positionOptionLists(instance);
+          setTimeout(() => { dialog.scrollTop = scrollTop; positionOptionLists(instance); }, 0);
+        });
+        return;
+      }
       const option = event.target.closest("[data-option]"), font = event.target.closest("[data-font]"), color = event.target.closest("[data-color]");
       const imageAction = event.target.closest("[data-image-action]"), layerAction = event.target.closest("[data-layer-action]");
       if (imageAction) {
@@ -202,17 +364,47 @@
       }
       const button = option || font || color; if (!button) return;
       const id = button.closest("[data-id]").dataset.id;
-      if (option && !option.disabled) instance.state.options[id] = option.dataset.option;
-      if (font) instance.state.fonts[id] = font.dataset.font;
+      if (option && !option.disabled) {
+        instance.state.options[id] = option.dataset.option;
+        if (option.dataset.optionSource === "overflow") {
+          instance.state.promotedOptionIds[id] = option.dataset.option;
+          instance.state.expandedOptionGroups[id] = false;
+        } else delete instance.state.promotedOptionIds[id];
+      }
+      if (font) {
+        instance.state.fonts[id] = font.dataset.font;
+        const group = instance.config.fontGroups.find((item) => item.id === id);
+        ensureFontLoaded(group?.options.find((item) => item.id === font.dataset.font));
+        scheduleFontReadyRender(instance);
+      }
       if (color) instance.state.colors[id] = color.dataset.color;
+      const dialog = q(instance.modal, ".amzcustom-dialog");
+      const scrollTop = option && dialog ? dialog.scrollTop : null;
+      const optionGroup = option?.closest("[data-id]");
+      const choices = optionGroup?.querySelector(".amzcustom-choices");
+      const optionScrollLeft = choices ? choices.scrollLeft : null;
       renderControls(instance);
+      if (scrollTop != null) requestAnimationFrame(() => {
+        dialog.scrollTop = scrollTop;
+        if (optionScrollLeft != null && optionGroup) {
+          const nextChoices = q(instance.modal, `[data-id="${CSS.escape(id)}"] .amzcustom-choices`);
+          if (nextChoices) nextChoices.scrollLeft = optionScrollLeft;
+        }
+        setTimeout(() => {
+          dialog.scrollTop = scrollTop;
+          if (optionScrollLeft != null && optionGroup) {
+            const nextChoices = q(instance.modal, `[data-id="${CSS.escape(id)}"] .amzcustom-choices`);
+            if (nextChoices) nextChoices.scrollLeft = optionScrollLeft;
+          }
+        }, 0);
+      });
     });
     q(instance.modal, ".amzcustom-controls").addEventListener("input", async (event) => {
       const group = event.target.closest("[data-id]"); if (!group) return; const id = group.dataset.id;
       const textInput = instance.config.textInputs.find((x)=>x.id===id);
       if (event.target.matches('input[type="text"],textarea')) { instance.state.texts[id] = normalizeText(event.target.value, textInput || {}); event.target.value = instance.state.texts[id]; const meta=group.querySelector(".amzcustom-meta span"); if(meta) meta.textContent = `${instance.state.texts[id].length}${textInput?.maxLength ? `/${textInput.maxLength}` : ""}`; evaluate(instance); renderPreview(instance); return; }
-      if (event.target.matches('input[type="file"]') && event.target.files[0]) { instance.state.images[id] = await fileData(event.target.files[0]); instance.state.imageTransforms[id] = { x:0, y:0, scale:1, rotation:0 }; instance.state.activeEdit = `image:${id}`; }
-      if (event.target.matches("select")) { if (instance.config.optionGroups.some((x)=>x.id===id)) instance.state.options[id] = event.target.value; else if (instance.config.fontGroups.some((x)=>x.id===id)) instance.state.fonts[id] = event.target.value; else instance.state.colors[id] = event.target.value; }
+      if (event.target.matches('input[type="file"]') && event.target.files[0]) { instance.state.images[id] = await fileData(event.target.files[0]); instance.state.imageTransforms[id] = { x:0, y:0, scale:1, rotation:0 }; if (instance.state.activeEdit === `image:${id}`) instance.state.activeEdit = ""; }
+      if (event.target.matches("select")) { if (instance.config.optionGroups.some((x)=>x.id===id)) instance.state.options[id] = event.target.value; else if (instance.config.fontGroups.some((x)=>x.id===id)) { instance.state.fonts[id] = event.target.value; const group = instance.config.fontGroups.find((x)=>x.id===id); ensureFontLoaded(group?.options.find((item)=>item.id===event.target.value)); } else instance.state.colors[id] = event.target.value; }
       evaluate(instance); renderControls(instance);
     });
   }
@@ -277,11 +469,11 @@
   }
   function create(root) {
     const config = parseConfig(root); if (!config || instances.has(root)) return;
-    for(const group of config.fontGroups||[])for(const font of group.options||[]){if(!font.fontUrl)continue;const style=document.createElement("style");style.textContent=`@font-face{font-family:${JSON.stringify(font.family)};src:url(${JSON.stringify(font.fontUrl)});font-display:swap}`;document.head.appendChild(style);}
+    for(const group of config.fontGroups||[])for(const font of group.options||[])ensureFontLoaded(font);
     const modal = document.createElement("div"); modal.className="amzcustom-modal"; modal.hidden=true;
     modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><strong class="amzcustom-price"></strong><button class="amzcustom-add">Add customized item</button></footer></section>`;
     document.body.appendChild(modal); const instance={root,modal,config,state:initialState(config)}; instances.set(root,instance);
-    q(root,".amzcustom-open").addEventListener("click",()=>{ modal.hidden=false; document.body.classList.add("amzcustom-locked"); renderControls(instance); });
+    q(root,".amzcustom-open").addEventListener("click",()=>{ modal.hidden=false; document.body.classList.add("amzcustom-locked"); renderControls(instance); scheduleFontReadyRender(instance); });
     const close=()=>{modal.hidden=true;document.body.classList.remove("amzcustom-locked");}; q(modal,".amzcustom-close").addEventListener("click",close); q(modal,".amzcustom-backdrop").addEventListener("click",close); q(modal,".amzcustom-add").addEventListener("click",()=>finish(instance));
   }
   document.querySelectorAll("[data-amzcustom-root]").forEach(create);

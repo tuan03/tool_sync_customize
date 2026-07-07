@@ -305,138 +305,158 @@
   }
 
   function applyInstantPreviews() {
-    const currency = window.Shopify?.currency?.active || "USD";
-    const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(currency);
-    const format = window.Shopify?.theme?.money_format || window.Shopify?.money_format || window.theme?.moneyFormat || "${{amount}}";
-
-
-
-    // Update count immediately using cache to prevent count flashing
+    if (cartObserver) {
+      try { cartObserver.disconnect(); } catch (e) {}
+    }
     try {
-      const cachedReal = localStorage.getItem("amzcustom_real_cart_count");
-      const cachedRaw = localStorage.getItem("amzcustom_raw_cart_count");
-      if (cachedReal !== null && cachedRaw !== null) {
-        updateCartCounter(parseInt(cachedRaw, 10), parseInt(cachedReal, 10));
-      }
-    } catch (e) {}
+      const currency = window.Shopify?.currency?.active || "USD";
+      const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(currency);
+      const format = window.Shopify?.theme?.money_format || window.Shopify?.money_format || window.theme?.moneyFormat || "${{amount}}";
 
-    // Detect if theme rewrote processed rows (e.g. during quantity updates)
-    document.querySelectorAll('.amzcustom-processed').forEach((row) => {
-      const img = row.querySelector(".cart-items__media-image, img");
-      const hasPreview = img ? img.hasAttribute("data-amzcustom-preview") : true;
-      
-      const priceEls = findPriceElements(row);
-      const isPriceUpdated = priceEls.length === 0 || priceEls.some(el => el.hasAttribute("data-amzcustom-combined-price"));
-
-      if (!hasPreview || !isPriceUpdated) {
-        row.classList.remove("amzcustom-processed");
-      }
-    });
-
-    document.querySelectorAll('tr, .cart-item, .cart-row, [data-cart-item]').forEach((row, rowIndex) => {
-      if (row.classList.contains("amzcustom-processed")) return;
-      const variantId = getVariantIdFromRow(row);
-      if (variantId) {
-        let processed = false;
-
-        // 1. Instant Image Preview
-        const cachedPreview = localStorage.getItem("amzcustom_preview_" + variantId);
-        if (cachedPreview) {
-          replaceImage(row, cachedPreview);
-          processed = true;
+      // Update count immediately using cache to prevent count flashing
+      try {
+        const cachedReal = localStorage.getItem("amzcustom_real_cart_count");
+        const cachedRaw = localStorage.getItem("amzcustom_raw_cart_count");
+        if (cachedReal !== null && cachedRaw !== null) {
+          updateCartCounter(parseInt(cachedRaw, 10), parseInt(cachedReal, 10));
         }
+      } catch (e) {}
 
-        // 2. Instant Price Preview (to prevent price flashing)
-        const cachedSurcharge = localStorage.getItem("amzcustom_surcharge_" + variantId);
-        if (cachedSurcharge) {
-          const addonUnitPriceSum = parseInt(cachedSurcharge, 10);
-          if (addonUnitPriceSum > 0) {
-            let quantity = 1;
-            const qtyInput = row.querySelector('input[name="updates[]"], input.quantity__input, .cart-item__quantity-wrapper input');
-            if (qtyInput) {
-              quantity = parseInt(qtyInput.value) || 1;
-            }
+      // Detect if theme rewrote processed rows (e.g. during quantity updates)
+      document.querySelectorAll('.amzcustom-processed').forEach((row) => {
+        const img = row.querySelector(".cart-items__media-image, img");
+        const hasPreview = img ? img.hasAttribute("data-amzcustom-preview") : true;
+        
+        const priceEls = findPriceElements(row);
+        const isPriceUpdated = priceEls.length === 0 || priceEls.some(el => el.hasAttribute("data-amzcustom-combined-price"));
 
-            const cachedBasePrice = localStorage.getItem("amzcustom_unit_price_" + variantId);
-            const baseUnitPrice = cachedBasePrice ? parseInt(cachedBasePrice, 10) : null;
+        if (!hasPreview || !isPriceUpdated) {
+          row.classList.remove("amzcustom-processed");
+        }
+      });
 
-            const priceEls = findPriceElements(row);
+      document.querySelectorAll('tr, .cart-item, .cart-row, [data-cart-item]').forEach((row, rowIndex) => {
+        if (row.classList.contains("amzcustom-processed")) return;
+        const variantId = getVariantIdFromRow(row);
+        if (variantId) {
+          let processed = false;
 
-            priceEls.forEach((el) => {
-              const text = el.textContent.trim();
-              if (!text) return;
-
-              let clean = text.replace(/\s/g, "");
-              const match = clean.match(/[0-9]+(?:[.,][0-9]+)?/);
-              if (!match) return;
-
-              const numStr = match[0];
-              let parsedValue;
-              if (isZeroDecimal) {
-                parsedValue = parseFloat(numStr.replace(/[.,]/g, ""));
-              } else {
-                let normalized = numStr;
-                if (normalized.includes(",") && !normalized.includes(".")) {
-                  const parts = normalized.split(",");
-                  if (parts[parts.length - 1].length <= 2) {
-                    normalized = normalized.replace(",", ".");
-                  } else {
-                    normalized = normalized.replace(",", "");
-                  }
-                } else {
-                  normalized = normalized.replace(/,/g, "");
-                }
-                parsedValue = parseFloat(normalized);
-              }
-
-              if (isNaN(parsedValue)) return;
-
-              const parsedCents = isZeroDecimal ? parsedValue : Math.round(parsedValue * 100);
-              const storedOriginal = el.getAttribute("data-amzcustom-original-price");
-              const originalCents = storedOriginal ? parseInt(storedOriginal, 10) : parsedCents;
-
-              let isLinePrice = false;
-              if (baseUnitPrice !== null) {
-                const expectedUnitPrice = baseUnitPrice;
-                const expectedLinePrice = baseUnitPrice * quantity;
-                const diffUnit = Math.abs(originalCents - expectedUnitPrice);
-                const diffLine = Math.abs(originalCents - expectedLinePrice);
-                if (diffLine < diffUnit && quantity > 1) {
-                  isLinePrice = true;
-                }
-              } else {
-                isLinePrice = /total|line|subtotal/i.test(el.className || '') || /total|line|subtotal/i.test(el.parentElement?.className || '');
-              }
-
-              const combinedCents = isLinePrice 
-                ? originalCents + (addonUnitPriceSum * quantity)
-                : originalCents + addonUnitPriceSum;
-
-              updatePriceElement(el, originalCents, combinedCents, format, isZeroDecimal);
-            });
+          // 1. Instant Image Preview
+          const cachedPreview = localStorage.getItem("amzcustom_preview_" + variantId);
+          if (cachedPreview) {
+            replaceImage(row, cachedPreview);
             processed = true;
           }
-        }
 
-        if (processed) {
-          row.classList.add("amzcustom-processed");
+          // 2. Instant Price Preview (to prevent price flashing)
+          const cachedSurcharge = localStorage.getItem("amzcustom_surcharge_" + variantId);
+          if (cachedSurcharge) {
+            const addonUnitPriceSum = parseInt(cachedSurcharge, 10);
+            if (addonUnitPriceSum > 0) {
+              let quantity = 1;
+              const qtyInput = row.querySelector('input[name="updates[]"], input.quantity__input, .cart-item__quantity-wrapper input');
+              if (qtyInput) {
+                quantity = parseInt(qtyInput.value) || 1;
+              }
+
+              const cachedBasePrice = localStorage.getItem("amzcustom_unit_price_" + variantId);
+              const baseUnitPrice = cachedBasePrice ? parseInt(cachedBasePrice, 10) : null;
+
+              const priceEls = findPriceElements(row);
+
+              priceEls.forEach((el) => {
+                const text = el.textContent.trim();
+                if (!text) return;
+
+                let clean = text.replace(/\s/g, "");
+                const match = clean.match(/[0-9]+(?:[.,][0-9]+)?/);
+                if (!match) return;
+
+                const numStr = match[0];
+                let parsedValue;
+                if (isZeroDecimal) {
+                  parsedValue = parseFloat(numStr.replace(/[.,]/g, ""));
+                } else {
+                  let normalized = numStr;
+                  if (normalized.includes(",") && !normalized.includes(".")) {
+                    const parts = normalized.split(",");
+                    if (parts[parts.length - 1].length <= 2) {
+                      normalized = normalized.replace(",", ".");
+                    } else {
+                      normalized = normalized.replace(",", "");
+                    }
+                  } else {
+                    normalized = normalized.replace(/,/g, "");
+                  }
+                  parsedValue = parseFloat(normalized);
+                }
+
+                if (isNaN(parsedValue)) return;
+
+                const parsedCents = isZeroDecimal ? parsedValue : Math.round(parsedValue * 100);
+                const storedOriginal = el.getAttribute("data-amzcustom-original-price");
+                const originalCents = storedOriginal ? parseInt(storedOriginal, 10) : parsedCents;
+
+                let isLinePrice = false;
+                if (baseUnitPrice !== null) {
+                  const expectedUnitPrice = baseUnitPrice;
+                  const expectedLinePrice = baseUnitPrice * quantity;
+                  const diffUnit = Math.abs(originalCents - expectedUnitPrice);
+                  const diffLine = Math.abs(originalCents - expectedLinePrice);
+                  if (diffLine < diffUnit && quantity > 1) {
+                    isLinePrice = true;
+                  }
+                } else {
+                  isLinePrice = /total|line|subtotal/i.test(el.className || '') || /total|line|subtotal/i.test(el.parentElement?.className || '');
+                }
+
+                const combinedCents = isLinePrice 
+                  ? originalCents + (addonUnitPriceSum * quantity)
+                  : originalCents + addonUnitPriceSum;
+
+                updatePriceElement(el, originalCents, combinedCents, format, isZeroDecimal);
+              });
+              processed = true;
+            }
+          }
+
+          if (processed) {
+            row.classList.add("amzcustom-processed");
+          }
         }
+      });
+    } finally {
+      if (cartObserver) {
+        try { cartObserver.observe(document.documentElement, { childList: true, subtree: true }); } catch (e) {}
       }
-    });
+    }
   }
 
   // 2. Patch window.fetch to intercept cart quantity changes and update main/addon items together
   const originalFetch = window.fetch;
   
+  let inFlightCartFetch = null;
   async function getCartData() {
     if (cartDataCache) return cartDataCache;
-    const response = await originalFetch(`${window.Shopify.routes.root}cart.js`, { headers: { accept: "application/json" } });
-    if (response.ok) {
-      cartDataCache = await response.json();
-      setTimeout(() => { cartDataCache = null; }, 2000);
-      return cartDataCache;
-    }
-    return null;
+    if (inFlightCartFetch) return inFlightCartFetch;
+
+    inFlightCartFetch = (async () => {
+      try {
+        const response = await originalFetch(`${window.Shopify.routes.root}cart.js`, { headers: { accept: "application/json" } });
+        if (response.ok) {
+          cartDataCache = await response.json();
+          setTimeout(() => { cartDataCache = null; }, 2000);
+          return cartDataCache;
+        }
+      } catch (e) {
+        console.warn("Amazon customizer failed to get cart data", e);
+      } finally {
+        inFlightCartFetch = null;
+      }
+      return null;
+    })();
+
+    return inFlightCartFetch;
   }
 
   window.fetch = async function (input, init) {
@@ -485,6 +505,7 @@
     const isUpdate = url.includes("/cart/update");
 
     if (isChange || isUpdate) {
+      cartDataCache = null; // Invalidate cache immediately on change/update start
       try {
         const cart = await getCartData();
         if (cart && cart.items) {
@@ -579,15 +600,21 @@
   };
 
   async function syncCartQuantities(mainItems, addons) {
-    if (updatingCart) return false;
+    console.log("[AmzCustomCartDebug] syncCartQuantities starting", { mainItems, addons });
+    if (updatingCart) {
+      console.log("[AmzCustomCartDebug] syncCartQuantities already updating, aborting");
+      return false;
+    }
 
     const updates = {};
     let needsUpdate = false;
 
     for (const mainItem of mainItems) {
       const associatedAddons = addons.filter(addon => addon.properties._customization_id === mainItem.properties._customization_id);
+      console.log(`[AmzCustomCartDebug] mainItem ${mainItem.key} quantity ${mainItem.quantity}, associatedAddons:`, associatedAddons);
       for (const addon of associatedAddons) {
         if (addon.quantity !== mainItem.quantity) {
+          console.log(`[AmzCustomCartDebug] Quantity mismatch for addon ${addon.key}: addon qty ${addon.quantity} !== main qty ${mainItem.quantity}`);
           updates[addon.key] = mainItem.quantity;
           needsUpdate = true;
         }
@@ -597,6 +624,7 @@
     for (const addon of addons) {
       const hasMainItem = mainItems.some(mainItem => mainItem.properties._customization_id === addon.properties._customization_id);
       if (!hasMainItem && addon.quantity > 0) {
+        console.log(`[AmzCustomCartDebug] Orphaned addon found: ${addon.key}, setting qty to 0`);
         updates[addon.key] = 0;
         needsUpdate = true;
       }
@@ -604,18 +632,21 @@
 
     if (needsUpdate) {
       updatingCart = true;
+      console.log("[AmzCustomCartDebug] syncCartQuantities needs update, sending updates:", updates);
       try {
         const response = await fetch(`${window.Shopify.routes.root}cart/update.js`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ updates })
         });
+        console.log("[AmzCustomCartDebug] syncCartQuantities response status:", response.status);
         if (response.ok) {
+          console.log("[AmzCustomCartDebug] syncCartQuantities success, reloading page");
           window.location.reload();
           return true;
         }
       } catch (error) {
-        console.warn("Amazon customizer could not sync cart quantities", error);
+        console.warn("[AmzCustomCartDebug] syncCartQuantities error", error);
       } finally {
         updatingCart = false;
       }
@@ -626,128 +657,145 @@
   async function applyPreviews() {
     if (running) return;
     running = true;
+    console.log("[AmzCustomCartDebug] applyPreviews() starting");
     try {
       const response = await fetch(`${window.Shopify.routes.root}cart.js`, {
         headers: { accept: "application/json" },
         credentials: "same-origin",
       });
+      console.log("[AmzCustomCartDebug] fetch cart.js status:", response.status);
       if (!response.ok) return;
       const cart = await response.json();
+      console.log("[AmzCustomCartDebug] fetched cart data:", cart);
 
-      const rawCount = cart.item_count;
-      const realCount = (cart.items || []).filter(item => !(item.properties && item.properties._customization_fee_component)).reduce((sum, item) => sum + item.quantity, 0);
+      // We start DOM mutations here. Disconnect the observer to prevent infinite loops.
+      if (cartObserver) {
+        try { cartObserver.disconnect(); } catch (e) {}
+      }
       try {
-        localStorage.setItem("amzcustom_raw_cart_count", String(rawCount));
-        localStorage.setItem("amzcustom_real_cart_count", String(realCount));
-      } catch (e) {}
-      updateCartCounter(rawCount, realCount);
+        const rawCount = cart.item_count;
+        const realCount = (cart.items || []).filter(item => !(item.properties && item.properties._customization_fee_component)).reduce((sum, item) => sum + item.quantity, 0);
+        try {
+          localStorage.setItem("amzcustom_raw_cart_count", String(rawCount));
+          localStorage.setItem("amzcustom_real_cart_count", String(realCount));
+        } catch (e) {}
+        updateCartCounter(rawCount, realCount);
 
-      const addons = (cart.items || []).filter(item => item.properties && item.properties._customization_fee_component);
-      const mainItems = (cart.items || []).filter(item => item.properties && item.properties._customization_id && !item.properties._customization_fee_component);
+        const addons = (cart.items || []).filter(item => item.properties && item.properties._customization_fee_component);
+        const mainItems = (cart.items || []).filter(item => item.properties && item.properties._customization_id && !item.properties._customization_fee_component);
 
-      const didSync = await syncCartQuantities(mainItems, addons);
-      if (didSync) return;
-
-      const currency = window.Shopify?.currency?.active || "USD";
-      const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(currency);
-      const format = window.Shopify?.theme?.money_format || window.Shopify?.money_format || window.theme?.moneyFormat || "${{amount}}";
-
-      document.querySelectorAll('tr, .cart-item, .cart-row, [data-cart-item]').forEach((row, rowIndex) => {
-        let item = null;
-        const lineIndex = getLineIndexFromRow(row, cart.items || []);
-        if (lineIndex !== null) {
-          item = cart.items[lineIndex];
-        } else {
-          const key = row.getAttribute('data-key') || row.getAttribute('data-cart-item-key');
-          if (key) {
-            item = (cart.items || []).find(i => i.key === key);
-          } else {
-            const variantId = getVariantIdFromRow(row);
-            if (variantId) {
-              const matchingItems = (cart.items || []).filter(i => String(i.variant_id) === String(variantId) || String(i.id) === String(variantId));
-              if (matchingItems.length === 1) {
-                item = matchingItems[0];
-              }
-            }
-          }
-        }
-
-        if (!item) return;
-
-        const isAddon = item.properties && item.properties._customization_fee_component;
-        if (isAddon) {
-          row.style.setProperty("display", "none", "important");
-          row.classList.add("amzcustom-addon-hidden");
+        const didSync = await syncCartQuantities(mainItems, addons);
+        if (didSync) {
+          console.log("[AmzCustomCartDebug] syncCartQuantities triggered a reload, aborting render");
           return;
         }
 
-        const isMainCustomized = item.properties && item.properties._customization_id && !item.properties._customization_fee_component;
-        if (isMainCustomized) {
-          const url = previewUrl(item);
-          if (url) replaceImage(row, url);
-          
-          row.querySelectorAll('.amzcustom-surcharge-label').forEach(el => el.remove());
+        const currency = window.Shopify?.currency?.active || "USD";
+        const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(currency);
+        const format = window.Shopify?.theme?.money_format || window.Shopify?.money_format || window.theme?.moneyFormat || "${{amount}}";
 
-          // Save unit price to localStorage for applyInstantPreviews
-          const mainUnitPrice = item.final_price || item.price;
-          try {
-            localStorage.setItem("amzcustom_unit_price_" + item.variant_id, String(mainUnitPrice));
-          } catch (e) {}
+        console.log("[AmzCustomCartDebug] Processing cart rows in applyPreviews");
+        document.querySelectorAll('tr, .cart-item, .cart-row, [data-cart-item]').forEach((row, rowIndex) => {
+          let item = null;
+          const lineIndex = getLineIndexFromRow(row, cart.items || []);
+          if (lineIndex !== null) {
+            item = cart.items[lineIndex];
+          } else {
+            const key = row.getAttribute('data-key') || row.getAttribute('data-cart-item-key');
+            if (key) {
+              item = (cart.items || []).find(i => i.key === key);
+            } else {
+              const variantId = getVariantIdFromRow(row);
+              if (variantId) {
+                const matchingItems = (cart.items || []).filter(i => String(i.variant_id) === String(variantId) || String(i.id) === String(variantId));
+                if (matchingItems.length === 1) {
+                  item = matchingItems[0];
+                }
+              }
+            }
+          }
 
-          const associatedAddons = addons.filter(addon => addon.properties._customization_id === item.properties._customization_id);
-          if (associatedAddons.length > 0) {
+          if (!item) return;
+
+          const isAddon = item.properties && item.properties._customization_fee_component;
+          if (isAddon) {
+            row.style.setProperty("display", "none", "important");
+            row.classList.add("amzcustom-addon-hidden");
+            return;
+          }
+
+          const isMainCustomized = item.properties && item.properties._customization_id && !item.properties._customization_fee_component;
+          if (isMainCustomized) {
+            const url = previewUrl(item);
+            if (url) replaceImage(row, url);
+            
+            row.querySelectorAll('.amzcustom-surcharge-label').forEach(el => el.remove());
+
+            // Save unit price to localStorage for applyInstantPreviews
             const mainUnitPrice = item.final_price || item.price;
-            const mainLinePrice = item.final_line_price || item.line_price;
+            try {
+              localStorage.setItem("amzcustom_unit_price_" + item.variant_id, String(mainUnitPrice));
+            } catch (e) {}
 
-            const addonUnitPriceSum = associatedAddons.reduce((sum, addon) => sum + (addon.final_price || addon.price), 0);
-            const addonLinePriceSum = associatedAddons.reduce((sum, addon) => sum + (addon.final_line_price || addon.line_price), 0);
+            const associatedAddons = addons.filter(addon => addon.properties._customization_id === item.properties._customization_id);
+            if (associatedAddons.length > 0) {
+              const mainUnitPrice = item.final_price || item.price;
+              const mainLinePrice = item.final_line_price || item.line_price;
 
-            const combinedUnitPrice = mainUnitPrice + addonUnitPriceSum;
-            const combinedLinePrice = mainLinePrice + addonLinePriceSum;
+              const addonUnitPriceSum = associatedAddons.reduce((sum, addon) => sum + (addon.final_price || addon.price), 0);
+              const addonLinePriceSum = associatedAddons.reduce((sum, addon) => sum + (addon.final_line_price || addon.line_price), 0);
 
+              const combinedUnitPrice = mainUnitPrice + addonUnitPriceSum;
+              const combinedLinePrice = mainLinePrice + addonLinePriceSum;
+
+              const priceEls = findPriceElements(row);
+              priceEls.forEach((el) => {
+                updatePriceElement(el, mainUnitPrice, combinedUnitPrice, format, isZeroDecimal);
+                updatePriceElement(el, mainLinePrice, combinedLinePrice, format, isZeroDecimal);
+              });
+            }
+            row.classList.add("amzcustom-processed");
+          } else {
+            // Revert customizations if it was previously processed or cached
+            const variantId = item.variant_id || item.id;
+            if (variantId) {
+              try {
+                localStorage.removeItem("amzcustom_preview_" + variantId);
+                localStorage.removeItem("amzcustom_surcharge_" + variantId);
+                localStorage.removeItem("amzcustom_unit_price_" + variantId);
+              } catch (e) {}
+            }
+
+            // Restore image
+            const image = row.querySelector(".cart-items__media-image, img");
+            if (image && image.dataset.amzcustomOriginalSrc) {
+              image.src = image.dataset.amzcustomOriginalSrc;
+              image.alt = image.dataset.amzcustomOriginalAlt || "";
+              delete image.dataset.amzcustomOriginalSrc;
+              delete image.dataset.amzcustomOriginalAlt;
+              delete image.dataset.amzcustomPreview;
+            }
+
+            // Restore prices
             const priceEls = findPriceElements(row);
             priceEls.forEach((el) => {
-              updatePriceElement(el, mainUnitPrice, combinedUnitPrice, format, isZeroDecimal);
-              updatePriceElement(el, mainLinePrice, combinedLinePrice, format, isZeroDecimal);
+              const storedOriginal = el.getAttribute("data-amzcustom-original-price");
+              if (storedOriginal) {
+                const originalCents = parseInt(storedOriginal, 10);
+                updatePriceElement(el, originalCents, originalCents, format, isZeroDecimal);
+                el.removeAttribute("data-amzcustom-original-price");
+                el.removeAttribute("data-amzcustom-combined-price");
+              }
             });
-          }
-          row.classList.add("amzcustom-processed");
-        } else {
-          // Revert customizations if it was previously processed or cached
-          const variantId = item.variant_id || item.id;
-          if (variantId) {
-            try {
-              localStorage.removeItem("amzcustom_preview_" + variantId);
-              localStorage.removeItem("amzcustom_surcharge_" + variantId);
-              localStorage.removeItem("amzcustom_unit_price_" + variantId);
-            } catch (e) {}
-          }
 
-          // Restore image
-          const image = row.querySelector(".cart-items__media-image, img");
-          if (image && image.dataset.amzcustomOriginalSrc) {
-            image.src = image.dataset.amzcustomOriginalSrc;
-            image.alt = image.dataset.amzcustomOriginalAlt || "";
-            delete image.dataset.amzcustomOriginalSrc;
-            delete image.dataset.amzcustomOriginalAlt;
-            delete image.dataset.amzcustomPreview;
+            row.classList.remove("amzcustom-processed");
           }
-
-          // Restore prices
-          const priceEls = findPriceElements(row);
-          priceEls.forEach((el) => {
-            const storedOriginal = el.getAttribute("data-amzcustom-original-price");
-            if (storedOriginal) {
-              const originalCents = parseInt(storedOriginal, 10);
-              updatePriceElement(el, originalCents, originalCents, format, isZeroDecimal);
-              el.removeAttribute("data-amzcustom-original-price");
-              el.removeAttribute("data-amzcustom-combined-price");
-            }
-          });
-
-          row.classList.remove("amzcustom-processed");
+        });
+      } finally {
+        if (cartObserver) {
+          try { cartObserver.observe(document.documentElement, { childList: true, subtree: true }); } catch (e) {}
         }
-      });
+      }
     } catch (error) {
       console.warn("Amazon customizer could not apply cart previews", error);
     } finally {
@@ -755,9 +803,17 @@
     }
   }
 
+  let cartObserver = null;
+
   function schedule() {
-    // Run instant updates synchronously to avoid rendering intermediate original elements
+    console.log("[AmzCustomCartDebug] schedule() called");
     applyInstantPreviews();
+
+    // Only fetch cart.js if there are cart elements (cart page, cart drawer, or cart popups)
+    const hasCart = document.querySelector('form[action*="/cart"], .cart-items, [data-cart-items], .cart-drawer, .ajaxcart, .cart-popup') !== null;
+    if (!hasCart) {
+      return;
+    }
 
     if (scheduled) return;
     scheduled = true;
@@ -776,5 +832,17 @@
 
   document.addEventListener("DOMContentLoaded", schedule);
   window.addEventListener("pageshow", schedule);
-  new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
+
+  let runCount = 0;
+  cartObserver = new MutationObserver((mutations) => {
+    runCount++;
+    if (runCount > 150) {
+      console.warn("[AmzCustomCartDebug] Disconnected cart observer due to excessive runs. Count:", runCount);
+      cartObserver.disconnect();
+      return;
+    }
+    console.log(`[AmzCustomCartDebug] Mutation detected (run: ${runCount})`);
+    schedule();
+  });
+  cartObserver.observe(document.documentElement, { childList: true, subtree: true });
 })();

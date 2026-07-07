@@ -514,51 +514,100 @@
   async function upload(instance, dataUrl) {
     if (!instance.root.dataset.uploadUrl) throw new Error("Theme block chưa cấu hình upload URL.");
     const response = await fetch(instance.root.dataset.uploadUrl, { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ dataUrl }) });
-    const json = await response.json(); if (!response.ok || !json.ok) throw new Error(json.error || "Upload thất bại"); return json.file;
+    const json = await response.json();
+    if (!response.ok || !json.ok) throw new Error(json.error || "Upload thất bại");
+    return json.file;
   }
   async function loadCanvasImage(url) {
-    const response = await fetch(url); if (!response.ok) throw new Error(`Không tải được preview asset (${response.status}).`);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Không tải được preview asset (${response.status}).`);
     const objectUrl = URL.createObjectURL(await response.blob());
-    try { return await new Promise((resolve, reject) => { const image = new Image(); image.onload=()=>resolve(image); image.onerror=reject; image.src=objectUrl; }); }
-    finally { setTimeout(()=>URL.revokeObjectURL(objectUrl),0); }
+    try {
+      return await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => {
+          resolve(image);
+        };
+        image.onerror = (err) => {
+          reject(err);
+        };
+        image.src = objectUrl;
+      });
+    } finally {
+      setTimeout(()=>URL.revokeObjectURL(objectUrl),0);
+    }
   }
   async function previewDataUrl(instance) {
     const stage=q(instance.modal,".amzcustom-stage"), rect=stage.getBoundingClientRect(), size=1000;
     const canvas=document.createElement("canvas"); canvas.width=canvas.height=size; const context=canvas.getContext("2d"); context.fillStyle="#fff"; context.fillRect(0,0,size,size);
     for (const child of stage.children) {
       const childRect=child.getBoundingClientRect(), x=(childRect.left-rect.left)/rect.width*size, y=(childRect.top-rect.top)/rect.height*size, width=childRect.width/rect.width*size, height=childRect.height/rect.height*size;
-      if (child.tagName === "IMG") { const image=await loadCanvasImage(child.src); context.drawImage(image,x,y,width,height); continue; }
+      if (child.tagName === "IMG") {
+        const image=await loadCanvasImage(child.src);
+        context.drawImage(image,x,y,width,height);
+        continue;
+      }
       const inner=child.querySelector("img");
-      if (inner) { const image=await loadCanvasImage(inner.src); const transform=(child.querySelector(".amzcustom-transform-box") || inner).style.transform.match(/translate\(([-\d.]+)%.*,([-\d.]+)%\).*scale\(([^)]+)\).*rotate\(([-\d.]+)deg\)/); const tx=Number(transform?.[1]||0)/100*width, ty=Number(transform?.[2]||0)/100*height, scale=Number(transform?.[3]||1), rotation=Number(transform?.[4]||0)*Math.PI/180; context.save(); context.beginPath(); context.rect(x,y,width,height); context.clip(); context.translate(x+width/2+tx,y+height/2+ty); context.rotate(rotation); context.drawImage(image,-width*scale/2,-height*scale/2,width*scale,height*scale); context.restore(); }
-      else { const textNode=child.querySelector("span") || child; const style=getComputedStyle(child); const textRect=textNode.getBoundingClientRect(); const tx=(textRect.left-childRect.left)/rect.width*size, ty=(textRect.top-childRect.top)/rect.height*size; context.fillStyle=style.color; context.font=`${Math.max(12,parseFloat(style.fontSize)/rect.width*size)}px ${style.fontFamily}`; context.textAlign="center"; context.textBaseline="middle"; const lines=textNode.textContent.split(/\r?\n/); lines.forEach((line,index)=>context.fillText(line,x+tx+width/2,y+ty+height/2+(index-(lines.length-1)/2)*32,width)); }
+      if (inner) {
+        const image=await loadCanvasImage(inner.src);
+        const transform=(child.querySelector(".amzcustom-transform-box") || inner).style.transform.match(/translate\(([-\d.]+)%.*,([-\d.]+)%\).*scale\(([^)]+)\).*rotate\(([-\d.]+)deg\)/); const tx=Number(transform?.[1]||0)/100*width, ty=Number(transform?.[2]||0)/100*height, scale=Number(transform?.[3]||1), rotation=Number(transform?.[4]||0)*Math.PI/180; context.save(); context.beginPath(); context.rect(x,y,width,height); context.clip(); context.translate(x+width/2+tx,y+height/2+ty); context.rotate(rotation); context.drawImage(image,-width*scale/2,-height*scale/2,width*scale,height*scale); context.restore();
+      }
+      else {
+        const textNode=child.querySelector("span") || child; const style=getComputedStyle(child); const textRect=textNode.getBoundingClientRect(); const tx=(textRect.left-childRect.left)/rect.width*size, ty=(textRect.top-childRect.top)/rect.height*size; context.fillStyle=style.color; context.font=`${Math.max(12,parseFloat(style.fontSize)/rect.width*size)}px ${style.fontFamily}`; context.textAlign="center"; context.textBaseline="middle"; const lines=textNode.textContent.split(/\r?\n/); lines.forEach((line,index)=>context.fillText(line,x+tx+width/2,y+ty+height/2+(index-(lines.length-1)/2)*32,width));
+      }
     }
-    return canvas.toDataURL("image/png",.92);
+    const dataUrl = canvas.toDataURL("image/png",.92);
+    return dataUrl;
   }
   async function finish(instance) {
-    if (!validate(instance)) return renderControls(instance);
+    if (!validate(instance)) {
+      return renderControls(instance);
+    }
     const add = q(instance.modal, ".amzcustom-add"); add.disabled = true; add.textContent = "Đang lưu…";
     try {
       const uploadedImages = {};
-      for (const [id, value] of Object.entries(instance.state.images)) uploadedImages[id] = await upload(instance, value.dataUrl);
-      const previewFile=await upload(instance,await previewDataUrl(instance));
+      for (const [id, value] of Object.entries(instance.state.images)) {
+        uploadedImages[id] = await upload(instance, value.dataUrl);
+      }
+      
+      const pDataUrl = await previewDataUrl(instance);
+      const previewFile=await upload(instance, pDataUrl);
+      
       const customizationId = crypto.randomUUID();
+      
       const manifest = { customizationId, schemaVersion:instance.config.schemaVersion, productId:instance.root.dataset.productId, variantId:instance.root.dataset.variantId, preview:previewFile, selections:{ options:instance.state.options, texts:instance.state.texts, fonts:instance.state.fonts, colors:instance.state.colors, images:uploadedImages, imageTransforms:instance.state.imageTransforms, textTransforms:instance.state.textTransforms, placementOffsets:instance.state.placementOffsets }, surcharge:surcharge(instance), createdAt:new Date().toISOString() };
       const manifestUrl = `data:application/json;base64,${btoa(unescape(encodeURIComponent(JSON.stringify(manifest))))}`;
+      
       const manifestFile = await upload(instance, manifestUrl);
+      
       const summary = Object.values(instance.state.texts).filter(Boolean).join(" | ").slice(0, 220) || "Customized product";
       try {
         localStorage.setItem("amzcustom_preview_" + instance.root.dataset.variantId, previewFile.url);
         const surchargeCents = Math.round(surcharge(instance) * 100);
         localStorage.setItem("amzcustom_surcharge_" + instance.root.dataset.variantId, String(surchargeCents));
-      } catch (e) {}
+      } catch (e) {
+        console.warn("localStorage write failed", e);
+      }
+      
       const properties={ Customization:summary, "_customization_id":customizationId, "_customization_preview":previewFile.url, "_customization_manifest":manifestFile.url, "_customization_fee":String(manifest.surcharge), "_customization_options":JSON.stringify(instance.state.options), "_customization_schema":String(instance.config.schemaVersion) };
       const items = [{ id:Number(instance.root.dataset.variantId), quantity:1, properties }];
+      
       const feeCounts={}; for(const group of instance.config.optionGroups){const option=selected(group,instance.state);if(option?.cost>0)feeCounts[option.cost]=(feeCounts[option.cost]||0)+1;}
       for(const [amount,quantity] of Object.entries(feeCounts)){const gid=instance.config.pricing.variantIds?.[amount];if(!gid)throw new Error(`Thiếu add-on variant cho phụ phí ${amount} VND. Hãy Sync lại product.`);items.push({id:Number(String(gid).split("/").pop()),parent_id:Number(instance.root.dataset.variantId),quantity,properties:{"_customization_id":customizationId,"_customization_parent_variant":instance.root.dataset.variantId,"_customization_fee_component":amount}});}
+      
       const addResponse = await fetch(`${window.Shopify.routes.root}cart/add.js`, { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({items}) });
-      if (!addResponse.ok) throw new Error((await addResponse.json()).description || "Không thể thêm vào giỏ hàng.");
+      
+      if (!addResponse.ok) {
+        const errorJson = await addResponse.json();
+        throw new Error(errorJson.description || "Không thể thêm vào giỏ hàng.");
+      }
+      
       window.location.href = `${window.Shopify.routes.root}cart`;
-    } catch (error) { alert(error.message); add.disabled = false; add.textContent = "Add customized item"; }
+    } catch (error) {
+      alert(error.message);
+      add.disabled = false;
+      add.textContent = "Add customized item";
+    }
   }
   function create(root) {
     const config = parseConfig(root); if (!config || instances.has(root)) return;

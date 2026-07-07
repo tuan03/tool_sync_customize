@@ -44,7 +44,14 @@
       '.cart-header span'
     ];
 
+    let runCount = 0;
     const observer = new MutationObserver((mutations) => {
+      runCount++;
+      if (runCount > 150) {
+        observer.disconnect();
+        return;
+      }
+
       let checkRows = false;
       let checkCounts = false;
 
@@ -61,57 +68,75 @@
         if (checkRows) break;
       }
 
-      if (checkRows) {
-        const rows = document.querySelectorAll('tr, .cart-item, .cart-row, [data-cart-item]');
-        rows.forEach(row => {
-          // Hide addon rows immediately
-          if (row.querySelector('a[href*="amazon-customization-addon"]')) {
-            row.style.setProperty("display", "none", "important");
-            row.classList.add("amzcustom-addon-hidden");
-            return;
-          }
-          // Shield only our customized products
-          if (row.innerHTML.includes('Customization:') && !row.classList.contains('amzcustom-shielded')) {
-            row.classList.add('amzcustom-shielded');
-          }
-        });
-      }
+      if (!checkRows && !checkCounts) return;
 
-      if (checkCounts) {
-        selectors.forEach(sel => {
-          document.querySelectorAll(sel).forEach(el => {
-            if (!el.classList.contains('amzcustom-count-processed') && !el.classList.contains('amzcustom-count-shielded')) {
-              el.classList.add('amzcustom-count-shielded');
+
+      // Disconnect observer temporarily to prevent infinite loops from our own mutations
+      observer.disconnect();
+
+      try {
+        if (checkRows) {
+          const rows = document.querySelectorAll('tr, .cart-item, .cart-row, [data-cart-item]');
+          rows.forEach(row => {
+            // Hide addon rows immediately
+            if (row.querySelector('a[href*="amazon-customization-addon"]')) {
+              if (!row.classList.contains("amzcustom-addon-hidden")) {
+                row.style.setProperty("display", "none", "important");
+                row.classList.add("amzcustom-addon-hidden");
+              }
+              return;
+            }
+            // Shield only our customized products
+            if (row.innerHTML.includes('Customization:') && !row.classList.contains('amzcustom-shielded')) {
+              row.classList.add('amzcustom-shielded');
             }
           });
-        });
+        }
 
-        try {
-          const cachedReal = localStorage.getItem("amzcustom_real_cart_count");
-          const cachedRaw = localStorage.getItem("amzcustom_raw_cart_count");
-          if (cachedReal !== null && cachedRaw !== null) {
-            const raw = String(cachedRaw);
-            const real = String(cachedReal);
-            selectors.forEach(sel => {
-              document.querySelectorAll(sel).forEach(el => {
-                if (!el.classList.contains('amzcustom-count-processed')) {
-                  const txt = el.textContent.trim();
-                  if (txt === raw) {
-                    el.textContent = real;
-                    el.classList.add('amzcustom-count-processed');
-                  } else if (el.querySelector('span')) {
-                    el.querySelectorAll('span').forEach(span => {
-                      if (span.textContent.trim() === raw) {
-                        span.textContent = real;
-                        el.classList.add('amzcustom-count-processed');
-                      }
-                    });
-                  }
-                }
-              });
+        if (checkCounts) {
+          selectors.forEach(sel => {
+            document.querySelectorAll(sel).forEach(el => {
+              if (!el.classList.contains('amzcustom-count-processed') && !el.classList.contains('amzcustom-count-shielded')) {
+                el.classList.add('amzcustom-count-shielded');
+              }
             });
-          }
-        } catch (e) {}
+          });
+
+          try {
+            const cachedReal = localStorage.getItem("amzcustom_real_cart_count");
+            const cachedRaw = localStorage.getItem("amzcustom_raw_cart_count");
+            if (cachedReal !== null && cachedRaw !== null) {
+              const raw = String(cachedRaw);
+              const real = String(cachedReal);
+              selectors.forEach(sel => {
+                document.querySelectorAll(sel).forEach(el => {
+                  if (!el.classList.contains('amzcustom-count-processed')) {
+                    const txt = el.textContent.trim();
+                    if (txt === raw) {
+                      el.textContent = real;
+                      el.classList.add('amzcustom-count-processed');
+                    } else if (el.querySelector('span')) {
+                      el.querySelectorAll('span').forEach(span => {
+                        if (span.textContent.trim() === raw) {
+                          span.textContent = real;
+                          el.classList.add('amzcustom-count-processed');
+                        }
+                      });
+                    }
+                  }
+                });
+              });
+            }
+          } catch (e) {}
+        }
+      } catch (err) {
+        console.error("Customizer observer error:", err);
+      } finally {
+        // Re-enable observer after modifications are complete
+        observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true
+        });
       }
     });
 

@@ -3,6 +3,9 @@
 .amzcustom-modal { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-items: stretch; padding: 0; }
 .amzcustom-modal,
 .amzcustom-modal * { box-sizing: border-box; }
+.amzcustom-modal,
+.amzcustom-dialog,
+.amzcustom-controls { overflow-anchor: none; }
 .amzcustom-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.62); }
 .amzcustom-dialog { position: relative; width: 100%; min-width: 0; height: 100%; max-height: none; overflow-x: hidden; overflow-y: auto; background: #fff; color: #171717; border-radius: 0; box-shadow: 0 20px 80px rgba(0,0,0,.3); }
 .amzcustom-head { position: sticky; top: 0; z-index: 4; display: flex; justify-content: space-between; align-items: center; min-height: 50px; padding: 8px 12px; border-bottom: 1px solid #ddd; background: #fff; }

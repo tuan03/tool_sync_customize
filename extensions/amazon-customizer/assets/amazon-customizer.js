@@ -6,19 +6,54 @@
   const q = (root, selector) => root.querySelector(selector);
   const escapeHtml = (value) => String(value == null ? "" : value).replace(/[&<>"']/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
 
-  function parseConfig(root) {
-    try { return JSON.parse(root.dataset.config); }
+  function normalizeConfigShape(config) {
+    if (!config || typeof config !== "object") return null;
+    for (const key of ["optionGroups", "textInputs", "imageInputs", "fontGroups", "colorGroups", "placements", "surfaces", "conditionalRules", "controlOrder", "assets"]) {
+      if (!Array.isArray(config[key])) config[key] = [];
+    }
+    for (const group of config.optionGroups) if (!Array.isArray(group.options)) group.options = [];
+    for (const group of config.fontGroups) if (!Array.isArray(group.options)) group.options = [];
+    for (const group of config.colorGroups) if (!Array.isArray(group.options)) group.options = [];
+    config.controlOrder = config.controlOrder.filter((entry) => entry && entry.type && entry.id);
+    config.product ||= {};
+    config.pricing ||= { amounts: [], variantIds: {} };
+    config.pricing.amounts ||= [];
+    config.pricing.variantIds ||= {};
+    return config;
+  }
+
+  async function parseConfig(root) {
+    try {
+      let config = JSON.parse(root.dataset.config);
+      if (typeof config === "string") config = JSON.parse(config);
+      if (config && config.externalConfig) {
+        if (!config.configUrl) throw new Error("Missing external customizer config URL.");
+        const url = String(config.configUrl).startsWith("//") ? `${window.location.protocol}${config.configUrl}` : config.configUrl;
+        const response = await fetch(url, { headers: { accept: "application/json" } });
+        if (!response.ok) throw new Error(`External customizer config failed to load (${response.status}).`);
+        config = await response.json();
+        if (typeof config === "string") config = JSON.parse(config);
+      }
+      return normalizeConfigShape(config);
+    }
     catch (error) { console.error("Invalid Amazon customizer metafield", error); return null; }
   }
   function initialState(config) {
     const options = {}, fonts = {}, colors = {};
     for (const group of config.optionGroups || []) {
-      const fallback = (group.options || []).find((option) => !option.outOfStock) || group.options[0];
-      const defaultOption = (group.options || []).find((option) => option.id === group.defaultOptionId && !option.outOfStock);
+      const groupOptions = Array.isArray(group.options) ? group.options : [];
+      const fallback = groupOptions.find((option) => !option.outOfStock) || groupOptions[0];
+      const defaultOption = groupOptions.find((option) => option.id === group.defaultOptionId && !option.outOfStock);
       options[group.id] = (defaultOption && defaultOption.id) || (group.required && fallback && fallback.id) || "";
     }
-    for (const group of config.fontGroups || []) fonts[group.id] = group.defaultFontId || (group.options[0] && group.options[0].id) || "";
-    for (const group of config.colorGroups || []) colors[group.id] = group.defaultColorId || (group.options[0] && group.options[0].id) || "";
+    for (const group of config.fontGroups || []) {
+      const groupOptions = Array.isArray(group.options) ? group.options : [];
+      fonts[group.id] = group.defaultFontId || (groupOptions[0] && groupOptions[0].id) || "";
+    }
+    for (const group of config.colorGroups || []) {
+      const groupOptions = Array.isArray(group.options) ? group.options : [];
+      colors[group.id] = group.defaultColorId || (groupOptions[0] && groupOptions[0].id) || "";
+    }
     return { options, fonts, colors, texts: {}, images: {}, imageTransforms: {}, textTransforms: {}, placementOffsets: {}, visible: {}, errors: {}, activeEdit: "", expandedOptionGroups: {}, promotedOptionIds: {} };
   }
   function formatMoney(value) { return `${Number(value || 0).toLocaleString()} VND`; }
@@ -115,7 +150,7 @@
     return !(item.ancestors || []).some((id) => instance.state.visible[id] === false);
   }
   function asset(url) { return url || ""; }
-  function selected(group, state) { return group.options.find((option) => option.id === state.options[group.id]); }
+  function selected(group, state) { return (Array.isArray(group.options) ? group.options : []).find((option) => option.id === state.options[group.id]); }
   function surcharge(instance) { return (instance.config.optionGroups || []).reduce((total, group) => total + (selected(group, instance.state)?.cost || 0), 0); }
   function box(config, placementId, state) {
     const placement = (config.placements || []).find((item) => item.id === placementId);
@@ -189,8 +224,8 @@
       const layer = document.createElement("div"); layer.className = `amzcustom-layer amzcustom-text-layer ${isSingleLineText(input) ? "is-single-line" : ""} ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, boxStyles);
       const fontGroup = activeStyleGroup(instance, input, config.fontGroups || []);
       const colorGroup = activeStyleGroup(instance, input, config.colorGroups || []);
-      const font = fontGroup?.options.find((item) => item.id === state.fonts[fontGroup.id]);
-      const color = colorGroup?.options.find((item) => item.id === state.colors[colorGroup.id]);
+      const font = (Array.isArray(fontGroup?.options) ? fontGroup.options : []).find((item) => item.id === state.fonts[fontGroup.id]);
+      const color = (Array.isArray(colorGroup?.options) ? colorGroup.options : []).find((item) => item.id === state.colors[colorGroup.id]);
       ensureFontLoaded(font);
       const transform = state.textTransforms[input.id] || { x: 0, y: 0, scale: 1, rotation: 0 };
       layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="transform:${transformStyle(transform)}"><span>${escapeHtml(isSingleLineText(input) ? state.texts[input.id].replace(/\r?\n/g, " ") : state.texts[input.id])}</span></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box"><button type="button" class="amzcustom-rotate-handle" data-transform-handle="rotate" aria-label="Rotate"></button><button type="button" class="amzcustom-resize-handle nw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle ne" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle sw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle se" data-transform-handle="resize" aria-label="Resize"></button></div>` : ""}`;
@@ -324,8 +359,9 @@
     return /(?:matching|tapestry|pillow|purchase)/i.test(label) && !isYesNoGroup(item);
   }
   function fontDropdownHtml(state, item) {
-    const selected = item.options.find((font) => font.id === state.fonts[item.id]) || item.options[0] || {};
-    return `<details class="amzcustom-font-dropdown"><summary style="font-family:${escapeHtml(cssFontFamily(selected.family || "Arial"))}"><span>${escapeHtml(selected.family || "Select font")}</span></summary><div class="amzcustom-fonts">${item.options.map((font) => { ensureFontLoaded(font); return `<button type="button" class="amzcustom-font ${state.fonts[item.id] === font.id ? "is-selected" : ""}" data-font="${escapeHtml(font.id)}" style="font-family:${escapeHtml(cssFontFamily(font.family))}">${escapeHtml(font.family)}</button>`; }).join("")}</div></details>`;
+    const options = Array.isArray(item.options) ? item.options : [];
+    const selected = options.find((font) => font.id === state.fonts[item.id]) || options[0] || {};
+    return `<details class="amzcustom-font-dropdown"><summary style="font-family:${escapeHtml(cssFontFamily(selected.family || "Arial"))}"><span>${escapeHtml(selected.family || "Select font")}</span></summary><div class="amzcustom-fonts">${options.map((font) => { ensureFontLoaded(font); return `<button type="button" class="amzcustom-font ${state.fonts[item.id] === font.id ? "is-selected" : ""}" data-font="${escapeHtml(font.id)}" style="font-family:${escapeHtml(cssFontFamily(font.family))}">${escapeHtml(font.family)}</button>`; }).join("")}</div></details>`;
   }
   function imageActionButton(action, label, icon) {
     const icons = {
@@ -340,6 +376,7 @@
     return `<button type="button" class="amzcustom-upload-button" data-image-action="replace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8 12 3 7 8"/><path d="M12 3v12"/></svg><span>Upload</span></button>`;
   }
   function optionChoicesHtml(state, item) {
+    item.options = Array.isArray(item.options) ? item.options : [];
     const isMobile = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
     const shouldCollapse = !isMobile && item.options.length > COLLAPSED_OPTION_LIMIT;
     const expanded = state.expandedOptionGroups[item.id] === true;
@@ -363,6 +400,7 @@
     if (!visible(instance, item)) return "";
     const state = instance.state;
     if (type === "option") {
+      item.options = Array.isArray(item.options) ? item.options : [];
       const hasImages = item.options.some((option) => option.thumbnailImage || option.overlayImage);
       const selectedValue = item.options.find((option) => option.id === state.options[item.id])?.label || "";
       if (item.displayHint === "choice-grid" || hasImages || isSizeChoiceGroup(item) || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
@@ -374,10 +412,42 @@
     }
     if (type === "image") { const active = state.activeEdit === `image:${item.id}`; return `<section class="amzcustom-control ${active ? "is-editing" : ""}" data-id="${item.id}">${controlHeader(item)}<input class="amzcustom-file is-hidden" type="file" accept="image/png,image/jpeg,image/webp">${state.images[item.id] ? `<div class="amzcustom-upload-row"><img src="${escapeHtml(state.images[item.id].dataUrl)}" alt=""><div class="amzcustom-actions">${imageActionButton(active ? "done" : "edit", active ? "Done" : "Edit", active ? "done" : "edit")}${imageActionButton("replace", "Replace", "replace")}${imageActionButton("delete", "Delete", "delete")}</div></div>` : uploadButtonHtml()}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`; }
     if (type === "font") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}${fontDropdownHtml(state, item)}</section>`;
-    if (type === "color") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-swatches">${item.options.map((color) => `<button type="button" class="amzcustom-swatch ${state.colors[item.id] === color.id ? "is-selected" : ""}" data-color="${escapeHtml(color.id)}" style="--swatch:${escapeHtml(color.value || "#fff")}" title="${escapeHtml(color.name)}"><span>${escapeHtml(color.name)}</span></button>`).join("")}</div></section>`;
+    if (type === "color") { const options = Array.isArray(item.options) ? item.options : []; return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-swatches">${options.map((color) => `<button type="button" class="amzcustom-swatch ${state.colors[item.id] === color.id ? "is-selected" : ""}" data-color="${escapeHtml(color.id)}" style="--swatch:${escapeHtml(color.value || "#fff")}" title="${escapeHtml(color.name)}"><span>${escapeHtml(color.name)}</span></button>`).join("")}</div></section>`; }
     return "";
   }
+  function captureScrollState(instance) {
+    const dialog = q(instance.modal, ".amzcustom-dialog");
+    const active = document.activeElement?.closest?.("[data-id]");
+    const activeId = active?.dataset.id || "";
+    const choices = activeId ? q(instance.modal, `[data-id="${CSS.escape(activeId)}"] .amzcustom-choices`) : null;
+    return {
+      dialog,
+      dialogScrollTop: dialog ? dialog.scrollTop : 0,
+      windowX: window.scrollX,
+      windowY: window.scrollY,
+      activeId,
+      choicesScrollLeft: choices ? choices.scrollLeft : null,
+    };
+  }
+  function restoreScrollState(instance, state) {
+    if (!state) return;
+    const dialog = q(instance.modal, ".amzcustom-dialog") || state.dialog;
+    if (dialog) dialog.scrollTop = state.dialogScrollTop;
+    if (state.choicesScrollLeft != null && state.activeId) {
+      const choices = q(instance.modal, `[data-id="${CSS.escape(state.activeId)}"] .amzcustom-choices`);
+      if (choices) choices.scrollLeft = state.choicesScrollLeft;
+    }
+    window.scrollTo(state.windowX, state.windowY);
+  }
+  function scheduleScrollRestore(instance, state) {
+    restoreScrollState(instance, state);
+    requestAnimationFrame(() => {
+      restoreScrollState(instance, state);
+      setTimeout(() => restoreScrollState(instance, state), 0);
+    });
+  }
   function renderControls(instance) {
+    const scrollState = captureScrollState(instance);
     evaluate(instance);
     const maps = { option:new Map(instance.config.optionGroups.map((x)=>[x.id,x])), text:new Map(instance.config.textInputs.map((x)=>[x.id,x])), image:new Map(instance.config.imageInputs.map((x)=>[x.id,x])), font:new Map(instance.config.fontGroups.map((x)=>[x.id,x])), color:new Map(instance.config.colorGroups.map((x)=>[x.id,x])) };
     const seen = new Set();
@@ -393,6 +463,7 @@
     }
     q(instance.modal, ".amzcustom-controls").innerHTML = html;
     bindControls(instance); renderPreview(instance); requestAnimationFrame(() => positionOptionLists(instance));
+    scheduleScrollRestore(instance, scrollState);
   }
   function positionOptionLists(instance) {
     const dialog = q(instance.modal, ".amzcustom-dialog");
@@ -529,7 +600,7 @@
       if (font) {
         instance.state.fonts[id] = font.dataset.font;
         const group = instance.config.fontGroups.find((item) => item.id === id);
-        ensureFontLoaded(group?.options.find((item) => item.id === font.dataset.font));
+        ensureFontLoaded((Array.isArray(group?.options) ? group.options : []).find((item) => item.id === font.dataset.font));
         scheduleFontReadyRender(instance);
       }
       if (color) instance.state.colors[id] = color.dataset.color;
@@ -559,7 +630,7 @@
       const textInput = instance.config.textInputs.find((x)=>x.id===id);
       if (event.target.matches('input[type="text"],textarea')) { instance.state.texts[id] = normalizeText(event.target.value, textInput || {}); event.target.value = instance.state.texts[id]; const meta=group.querySelector(".amzcustom-meta span"); if(meta) meta.textContent = `${instance.state.texts[id].length}${textInput?.maxLength ? `/${textInput.maxLength}` : ""}`; evaluate(instance); renderPreview(instance); return; }
       if (event.target.matches('input[type="file"]') && event.target.files[0]) { instance.state.images[id] = await fileData(event.target.files[0]); instance.state.imageTransforms[id] = { x:0, y:0, scale:1, rotation:0 }; if (instance.state.activeEdit === `image:${id}`) instance.state.activeEdit = ""; }
-      if (event.target.matches("select")) { if (instance.config.optionGroups.some((x)=>x.id===id)) instance.state.options[id] = event.target.value; else if (instance.config.fontGroups.some((x)=>x.id===id)) { instance.state.fonts[id] = event.target.value; const group = instance.config.fontGroups.find((x)=>x.id===id); ensureFontLoaded(group?.options.find((item)=>item.id===event.target.value)); } else instance.state.colors[id] = event.target.value; }
+      if (event.target.matches("select")) { if (instance.config.optionGroups.some((x)=>x.id===id)) instance.state.options[id] = event.target.value; else if (instance.config.fontGroups.some((x)=>x.id===id)) { instance.state.fonts[id] = event.target.value; const group = instance.config.fontGroups.find((x)=>x.id===id); ensureFontLoaded((Array.isArray(group?.options) ? group.options : []).find((item)=>item.id===event.target.value)); } else instance.state.colors[id] = event.target.value; }
       evaluate(instance); renderControls(instance);
     });
   }
@@ -579,31 +650,23 @@
     instance.state.errors = errors; return !Object.keys(errors).length;
   }
   async function upload(instance, dataUrl) {
-    console.log("[AmzCustomFinishDebug] upload() started");
     if (!instance.root.dataset.uploadUrl) throw new Error("Theme block chưa cấu hình upload URL.");
     const response = await fetch(instance.root.dataset.uploadUrl, { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ dataUrl }) });
-    console.log("[AmzCustomFinishDebug] upload() fetch returned status:", response.status);
     const json = await response.json();
-    console.log("[AmzCustomFinishDebug] upload() parsed response:", json);
     if (!response.ok || !json.ok) throw new Error(json.error || "Upload thất bại");
     return json.file;
   }
   async function loadCanvasImage(url) {
-    console.log("[AmzCustomFinishDebug] loadCanvasImage() started for URL:", url);
     const response = await fetch(url);
-    console.log("[AmzCustomFinishDebug] loadCanvasImage() fetch status:", response.status);
     if (!response.ok) throw new Error(`Không tải được preview asset (${response.status}).`);
     const objectUrl = URL.createObjectURL(await response.blob());
-    console.log("[AmzCustomFinishDebug] Created objectURL:", objectUrl);
     try {
       return await new Promise((resolve, reject) => {
         const image = new Image();
         image.onload = () => {
-          console.log("[AmzCustomFinishDebug] Image loaded successfully from objectURL");
           resolve(image);
         };
         image.onerror = (err) => {
-          console.error("[AmzCustomFinishDebug] Image failed to load from objectURL", err);
           reject(err);
         };
         image.src = objectUrl;
@@ -613,103 +676,90 @@
     }
   }
   async function previewDataUrl(instance) {
-    console.log("[AmzCustomFinishDebug] previewDataUrl() started");
     const stage=q(instance.modal,".amzcustom-stage"), rect=stage.getBoundingClientRect(), size=1000;
     const canvas=document.createElement("canvas"); canvas.width=canvas.height=size; const context=canvas.getContext("2d"); context.fillStyle="#fff"; context.fillRect(0,0,size,size);
     for (const child of stage.children) {
-      console.log("[AmzCustomFinishDebug] Processing canvas child:", child.tagName, child.className);
       const childRect=child.getBoundingClientRect(), x=(childRect.left-rect.left)/rect.width*size, y=(childRect.top-rect.top)/rect.height*size, width=childRect.width/rect.width*size, height=childRect.height/rect.height*size;
       if (child.tagName === "IMG") {
-        console.log("[AmzCustomFinishDebug] Loading canvas image:", child.src);
         const image=await loadCanvasImage(child.src);
-        console.log("[AmzCustomFinishDebug] Image loaded, drawing to canvas");
         context.drawImage(image,x,y,width,height);
         continue;
       }
       const inner=child.querySelector("img");
       if (inner) {
-        console.log("[AmzCustomFinishDebug] Loading nested canvas image:", inner.src);
         const image=await loadCanvasImage(inner.src);
-        console.log("[AmzCustomFinishDebug] Drawing nested image to canvas");
         const transform=(child.querySelector(".amzcustom-transform-box") || inner).style.transform.match(/translate\(([-\d.]+)%.*,([-\d.]+)%\).*scale\(([^)]+)\).*rotate\(([-\d.]+)deg\)/); const tx=Number(transform?.[1]||0)/100*width, ty=Number(transform?.[2]||0)/100*height, scale=Number(transform?.[3]||1), rotation=Number(transform?.[4]||0)*Math.PI/180; context.save(); context.beginPath(); context.rect(x,y,width,height); context.clip(); context.translate(x+width/2+tx,y+height/2+ty); context.rotate(rotation); context.drawImage(image,-width*scale/2,-height*scale/2,width*scale,height*scale); context.restore();
       }
       else {
-        console.log("[AmzCustomFinishDebug] Drawing text to canvas");
         const textNode=child.querySelector("span") || child; const style=getComputedStyle(child); const textRect=textNode.getBoundingClientRect(); const tx=(textRect.left-childRect.left)/rect.width*size, ty=(textRect.top-childRect.top)/rect.height*size; context.fillStyle=style.color; context.font=`${Math.max(12,parseFloat(style.fontSize)/rect.width*size)}px ${style.fontFamily}`; context.textAlign="center"; context.textBaseline="middle"; const lines=textNode.textContent.split(/\r?\n/); lines.forEach((line,index)=>context.fillText(line,x+tx+width/2,y+ty+height/2+(index-(lines.length-1)/2)*32,width));
       }
     }
-    console.log("[AmzCustomFinishDebug] Canvas drawing complete, generating dataURL");
     const dataUrl = canvas.toDataURL("image/png",.92);
-    console.log("[AmzCustomFinishDebug] Canvas dataURL generated");
     return dataUrl;
   }
   async function finish(instance) {
-    console.log("[AmzCustomFinishDebug] finish() called");
     if (!validate(instance)) {
-      console.log("[AmzCustomFinishDebug] validation failed");
       return renderControls(instance);
     }
     const add = q(instance.modal, ".amzcustom-add"); add.disabled = true; add.textContent = "Đang lưu…";
     try {
-      console.log("[AmzCustomFinishDebug] Uploading user-uploaded images");
       const uploadedImages = {};
       for (const [id, value] of Object.entries(instance.state.images)) {
-        console.log(`[AmzCustomFinishDebug] Uploading image for input ${id}`);
         uploadedImages[id] = await upload(instance, value.dataUrl);
       }
       
-      console.log("[AmzCustomFinishDebug] Generating canvas preview");
       const pDataUrl = await previewDataUrl(instance);
-      console.log("[AmzCustomFinishDebug] Uploading canvas preview");
       const previewFile=await upload(instance, pDataUrl);
       
       const customizationId = crypto.randomUUID();
-      console.log("[AmzCustomFinishDebug] Customization ID:", customizationId);
       
       const manifest = { customizationId, schemaVersion:instance.config.schemaVersion, productId:instance.root.dataset.productId, variantId:instance.root.dataset.variantId, preview:previewFile, selections:{ options:instance.state.options, texts:instance.state.texts, fonts:instance.state.fonts, colors:instance.state.colors, images:uploadedImages, imageTransforms:instance.state.imageTransforms, textTransforms:instance.state.textTransforms, placementOffsets:instance.state.placementOffsets }, surcharge:surcharge(instance), createdAt:new Date().toISOString() };
       const manifestUrl = `data:application/json;base64,${btoa(unescape(encodeURIComponent(JSON.stringify(manifest))))}`;
       
-      console.log("[AmzCustomFinishDebug] Uploading manifest");
       const manifestFile = await upload(instance, manifestUrl);
       
       const summary = Object.values(instance.state.texts).filter(Boolean).join(" | ").slice(0, 220) || "Customized product";
       try {
-        console.log("[AmzCustomFinishDebug] Saving to localStorage");
         localStorage.setItem("amzcustom_preview_" + instance.root.dataset.variantId, previewFile.url);
         const surchargeCents = Math.round(surcharge(instance) * 100);
         localStorage.setItem("amzcustom_surcharge_" + instance.root.dataset.variantId, String(surchargeCents));
       } catch (e) {
-        console.warn("[AmzCustomFinishDebug] localStorage write failed", e);
       }
       
       const properties={ Customization:summary, "_customization_id":customizationId, "_customization_preview":previewFile.url, "_customization_manifest":manifestFile.url, "_customization_fee":String(manifest.surcharge), "_customization_options":JSON.stringify(instance.state.options), "_customization_schema":String(instance.config.schemaVersion) };
       const items = [{ id:Number(instance.root.dataset.variantId), quantity:1, properties }];
       
-      console.log("[AmzCustomFinishDebug] Finding fee addon variants");
       const feeCounts={}; for(const group of instance.config.optionGroups){const option=selected(group,instance.state);if(option?.cost>0)feeCounts[option.cost]=(feeCounts[option.cost]||0)+1;}
       for(const [amount,quantity] of Object.entries(feeCounts)){const gid=instance.config.pricing.variantIds?.[amount];if(!gid)throw new Error(`Thiếu add-on variant cho phụ phí ${amount} VND. Hãy Sync lại product.`);items.push({id:Number(String(gid).split("/").pop()),parent_id:Number(instance.root.dataset.variantId),quantity,properties:{"_customization_id":customizationId,"_customization_parent_variant":instance.root.dataset.variantId,"_customization_fee_component":amount}});}
       
-      console.log("[AmzCustomFinishDebug] POSTing items to /cart/add.js:", items);
       const addResponse = await fetch(`${window.Shopify.routes.root}cart/add.js`, { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({items}) });
       
-      console.log("[AmzCustomFinishDebug] POST finished, status:", addResponse.status);
       if (!addResponse.ok) {
         const errorJson = await addResponse.json();
-        console.error("[AmzCustomFinishDebug] Error response from /cart/add.js:", errorJson);
         throw new Error(errorJson.description || "Không thể thêm vào giỏ hàng.");
       }
       
-      console.log("[AmzCustomFinishDebug] Redirecting to /cart");
       window.location.href = `${window.Shopify.routes.root}cart`;
     } catch (error) {
-      console.error("[AmzCustomFinishDebug] Catch error:", error);
       alert(error.message);
       add.disabled = false;
       add.textContent = "Add customized item";
     }
   }
-  function create(root) {
-    const config = parseConfig(root); if (!config || instances.has(root)) return;
+  async function create(root) {
+    if (instances.has(root)) return;
+    const openButton = q(root, ".amzcustom-open");
+    const originalText = openButton ? openButton.textContent : "";
+    if (openButton) {
+      openButton.disabled = true;
+      openButton.textContent = "Loading...";
+    }
+    const config = await parseConfig(root);
+    if (openButton) {
+      openButton.disabled = false;
+      openButton.textContent = originalText;
+    }
+    if (!config || instances.has(root)) return;
     for(const group of config.fontGroups||[])for(const font of group.options||[])ensureFontLoaded(font);
     const modal = document.createElement("div"); modal.className="amzcustom-modal"; modal.hidden=true;
     modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><strong class="amzcustom-price"></strong><button class="amzcustom-add">Add customized item</button></footer></section>`;

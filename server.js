@@ -3,7 +3,7 @@ const http = require("http");
 const path = require("path");
 const { URL } = require("url");
 const crypto = require("crypto");
-const { normalizeAmazonConfig, validateMetafieldSize, replaceAssetUrls } = require("./lib/amazon-config");
+const { normalizeAmazonConfig, byteSize, MAX_METAFIELD_BYTES, replaceAssetUrls } = require("./lib/amazon-config");
 const { ShopifyAdmin } = require("./lib/shopify-admin");
 
 const PORT = Number(process.env.PORT || 3000);
@@ -88,6 +88,45 @@ function shopifyFileUrl(file) {
   return file && ((file.image && file.image.url) || file.url) || "";
 }
 
+function externalConfigFilename(productId, config) {
+  const digest = crypto.createHash("sha1").update(JSON.stringify(config)).digest("hex").slice(0, 16);
+  const id = String(productId || "product").split("/").pop().replace(/[^A-Za-z0-9_-]/g, "") || "product";
+  return `amzcustom-config-${id}-${digest}.json`;
+}
+
+function compactCustomizerConfig(config, configUrl, fullBytes) {
+  return {
+    schemaVersion: config.schemaVersion,
+    externalConfig: true,
+    configUrl,
+    externalConfigBytes: fullBytes,
+    source: config.source,
+    pricing: config.pricing,
+    optionGroups: (config.optionGroups || []).map((group) => ({
+      id: group.id,
+      options: (group.options || []).map((option) => ({ id: option.id, cost: Number(option.cost || 0) })),
+    })),
+  };
+}
+
+async function ensureExternalConfigFile(admin, product, config, apply) {
+  const filename = externalConfigFilename(product.id, config);
+  if (!apply) return { dryRun: true, filename, url: null };
+  const existing = await admin.findFileByFilename(filename);
+  if (existing && existing.fileStatus === "READY") {
+    return { reused: true, filename, id: existing.id, url: shopifyFileUrl(existing) };
+  }
+  const file = await admin.uploadBuffer(Buffer.from(JSON.stringify(config), "utf8"), {
+    filename,
+    mimeType: "application/json",
+    alt: `Amazon customizer config for ${product.title}`,
+    contentType: "FILE",
+  }, true);
+  const url = shopifyFileUrl(file);
+  if (!url) throw new Error("Shopify did not return a URL for the external config file.");
+  return { filename, id: file.id, url };
+}
+
 async function syncConfigAssets(admin, config, apply) {
   if (!apply) return { config, assets: config.assets.map((asset) => ({ source: asset.url, dryRun: true, filename: safeFileName(asset.url) })) };
   const uploaded = await mapLimit(config.assets, 3, async (asset) => {
@@ -103,8 +142,8 @@ async function handleShopifyConvert(req, res) {
   try {
     const body = JSON.parse(await readRequestBody(req) || "{}");
     const config = normalizeAmazonConfig(body.config, body.sourceUrl || "");
-    const bytes = validateMetafieldSize(config);
-    jsonResponse(res, 200, { ok: true, config, summary: { bytes, asin: config.source.asin, controls: config.controlOrder.length, assets: config.assets.length, surchargeAmounts: config.pricing.amounts, warnings: config.warnings } });
+    const bytes = byteSize(config);
+    jsonResponse(res, 200, { ok: true, config, summary: { bytes, externalStorageRequired: bytes > MAX_METAFIELD_BYTES, asin: config.source.asin, controls: config.controlOrder.length, assets: config.assets.length, surchargeAmounts: config.pricing.amounts, warnings: config.warnings } });
   } catch (error) {
     jsonResponse(res, 400, { ok: false, error: error.message });
   }
@@ -128,7 +167,6 @@ async function handleShopifySync(req, res) {
       config.pricing.amounts = [...new Set(config.optionGroups.flatMap((group) => group.options.map((option) => option.cost)).filter((amount) => amount > 0))].sort((a, b) => a - b);
       config.pricing.sourceMultiplier = priceMultiplier;
     }
-    validateMetafieldSize(config);
     const product = await admin.product(body.productId || "");
     const definition = await admin.ensureCustomizerDefinition(apply);
     const assetResult = await syncConfigAssets(admin, config, apply);
@@ -137,9 +175,18 @@ async function handleShopifySync(req, res) {
     config.pricing.currencyCode = "VND";
     config.pricing.surchargeProductId = surcharge.productId || null;
     config.pricing.variantIds = surcharge.variants || {};
-    const bytes = validateMetafieldSize(config);
-    const metafield = await admin.setCustomizer(product.id, config, apply);
-    jsonResponse(res, 200, { ok: true, apply, product: { id: product.id, title: product.title }, definition, assets: assetResult.assets, metafield, bytes, pricing: { currency: "VND", amounts: config.pricing.amounts, surcharge } });
+    const bytes = byteSize(config);
+    let metafieldConfig = config;
+    let externalConfig = null;
+    if (bytes > MAX_METAFIELD_BYTES) {
+      const externalFile = await ensureExternalConfigFile(admin, product, config, apply);
+      metafieldConfig = compactCustomizerConfig(config, externalFile.url, bytes);
+      const metafieldBytes = byteSize(metafieldConfig);
+      if (metafieldBytes > MAX_METAFIELD_BYTES) throw new Error(`Compact customizer metafield is still too large (${metafieldBytes} bytes).`);
+      externalConfig = { enabled: true, file: externalFile, metafieldBytes };
+    }
+    const metafield = await admin.setCustomizer(product.id, metafieldConfig, apply);
+    jsonResponse(res, 200, { ok: true, apply, product: { id: product.id, title: product.title }, definition, assets: assetResult.assets, metafield, bytes, externalConfig, pricing: { currency: "VND", amounts: config.pricing.amounts, surcharge } });
   } catch (error) {
     jsonResponse(res, 400, { ok: false, error: error.message });
   }

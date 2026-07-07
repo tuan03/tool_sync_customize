@@ -427,14 +427,14 @@
     return section;
   }
   function visibleInstructions(value) {
-    const text = String(value || "").trim();
+    const text = String(value || "").replace(/\s+/g, " ").trim();
     const hidden = [
       "Please check the spelling carefully.",
       "'Why pay for shipping twice? Add the matching Pillow to your order now, complete the look, and save time & money.'",
       "Why pay for shipping twice? Add the matching Pillow to your order now, complete the look, and save time & money.",
       "If you don't fill it out, we'll make it according to the Amazon page time.",
       "Why pay for shipping twice? Add the matching tapestry to your order now, complete the look, and save time & money."
-    ];
+    ].map((item) => item.replace(/\s+/g, " ").trim());
     return hidden.includes(text) ? "" : text;
   }
   function isYesNoGroup(group) {

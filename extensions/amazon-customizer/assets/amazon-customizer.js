@@ -172,8 +172,10 @@
     renderOptionOverlays(instance, isBackgroundOptionGroup, "amzcustom-stage-background");
     for (const input of config.imageInputs || []) {
       if (!visible(instance, input) || !state.images[input.id]) continue;
+      const placement = (config.placements || []).find((item) => item.id === input.placementId) || null;
+      const boxStyles = box(config, input.placementId, state);
       const editId = `image:${input.id}`;
-      const layer = document.createElement("div"); layer.className = `amzcustom-layer amzcustom-image-layer ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, box(config, input.placementId, state));
+      const layer = document.createElement("div"); layer.className = `amzcustom-layer amzcustom-image-layer ${placement?.isFreePlacement ? "is-free-placement" : ""} ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, boxStyles);
       const transform = state.imageTransforms[input.id] || { x: 0, y: 0, scale: 1, rotation: 0 };
       const fit = fitBoxStyle(state.images[input.id]);
       layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="${fit}transform:${transformStyle(transform)}"><img alt="" src="${escapeHtml(state.images[input.id].dataUrl)}"></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box"><button type="button" class="amzcustom-rotate-handle" data-transform-handle="rotate" aria-label="Rotate"></button><button type="button" class="amzcustom-resize-handle nw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle ne" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle sw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle se" data-transform-handle="resize" aria-label="Resize"></button></div>` : ""}`;
@@ -290,19 +292,20 @@
     window.addEventListener("pointermove",move);window.addEventListener("pointerup",up);
   }
   function controlHeader(item, value) {
-    const suffix = value ? `: ${value}` : "";
+    const suffix = value ? `: <strong>${escapeHtml(value)}</strong>` : "";
     const help = visibleInstructions(item.instructions);
-    return `<div class="amzcustom-title"><span>${escapeHtml(item.label)}${escapeHtml(suffix)}</span>${item.required ? "" : '<em>(optional)</em>'}</div>${help ? `<p class="amzcustom-help">${escapeHtml(help)}</p>` : ""}`;
+    const helpButton = help ? `<button type="button" class="amzcustom-help-trigger" data-help="${escapeHtml(help)}" aria-label="${escapeHtml(help)}"></button>` : "";
+    return `<div class="amzcustom-title"><span>${escapeHtml(item.label)}<span class="amzcustom-title-value">${suffix}</span></span>${helpButton}${item.required ? "" : '<em>(optional)</em>'}</div>${value ? `<div class="amzcustom-selected">Selected: <strong>${escapeHtml(value)}</strong></div>` : ""}`;
   }
   function visibleInstructions(value) {
-    const text = String(value || "").trim();
+    const text = String(value || "").replace(/\s+/g, " ").trim();
     const hidden = [
       "Please check the spelling carefully.",
       "'Why pay for shipping twice? Add the matching Pillow to your order now, complete the look, and save time & money.'",
       "Why pay for shipping twice? Add the matching Pillow to your order now, complete the look, and save time & money.",
       "If you don't fill it out, we'll make it according to the Amazon page time.",
       "Why pay for shipping twice? Add the matching tapestry to your order now, complete the look, and save time & money."
-    ];
+    ].map((item) => item.replace(/\s+/g, " ").trim());
     return hidden.includes(text) ? "" : text;
   }
   function isYesNoGroup(item) {
@@ -313,9 +316,12 @@
     const options = item.options || [];
     return options.length > 0 && options.length <= 3 && options.every((option) => !option.thumbnailImage && !option.overlayImage && !option.cost);
   }
+  function isSizeChoiceGroup(item) {
+    return /\bsize\b/i.test(String(item.label || ""));
+  }
   function isTextChoiceGroup(item) {
     const label = String(item.label || "");
-    return /(?:item\s+size|matching|tapestry|pillow|purchase)/i.test(label) && !isYesNoGroup(item);
+    return /(?:matching|tapestry|pillow|purchase)/i.test(label) && !isYesNoGroup(item);
   }
   function fontDropdownHtml(state, item) {
     const selected = item.options.find((font) => font.id === state.fonts[item.id]) || item.options[0] || {};
@@ -329,6 +335,9 @@
       delete: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 15H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>'
     };
     return `<button type="button" data-image-action="${escapeHtml(action)}">${icons[icon] || ""}<span>${escapeHtml(label)}</span></button>`;
+  }
+  function uploadButtonHtml() {
+    return `<button type="button" class="amzcustom-upload-button" data-image-action="replace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8 12 3 7 8"/><path d="M12 3v12"/></svg><span>Upload</span></button>`;
   }
   function optionChoicesHtml(state, item) {
     const isMobile = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
@@ -348,7 +357,7 @@
     const primaryIds = new Set(primaryOptions.map((option) => option.id));
     const overflowOptions = shouldCollapse ? item.options.filter((option) => !primaryIds.has(option.id)) : [];
     const overflow = shouldCollapse && expanded ? `<div class="amzcustom-options-list">${overflowOptions.map((option) => { const img = option.thumbnailImage || option.overlayImage; return `<button type="button" class="amzcustom-option-row ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="overflow" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-row-icon"></span>`}<span>${escapeHtml(option.label)}</span></button>`; }).join("")}</div>` : "";
-    return `<div class="amzcustom-choices ${isYesNoGroup(item) ? "is-yes-no" : ""} ${isInlineChoiceGroup(item) ? "is-inline-choice" : ""} ${isTextChoiceGroup(item) ? "is-text-choice" : ""} ${shouldCollapse ? "is-collapsed" : ""} ${expanded ? "is-expanded" : ""}">${choices}</div>${toggle}${overflow}`;
+    return `<div class="amzcustom-choices ${isYesNoGroup(item) ? "is-yes-no" : ""} ${isInlineChoiceGroup(item) ? "is-inline-choice" : ""} ${isSizeChoiceGroup(item) ? "is-size-choice" : ""} ${isTextChoiceGroup(item) ? "is-text-choice" : ""} ${shouldCollapse ? "is-collapsed" : ""} ${expanded ? "is-expanded" : ""}">${choices}</div>${toggle}${overflow}`;
   }
   function controlHtml(instance, type, item) {
     if (!visible(instance, item)) return "";
@@ -356,14 +365,14 @@
     if (type === "option") {
       const hasImages = item.options.some((option) => option.thumbnailImage || option.overlayImage);
       const selectedValue = item.options.find((option) => option.id === state.options[item.id])?.label || "";
-      if (item.displayHint === "choice-grid" || hasImages || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      if (item.displayHint === "choice-grid" || hasImages || isSizeChoiceGroup(item) || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
       return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(option.cost)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
     if (type === "text") {
       const value = state.texts[item.id] || "";
       return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}${item.maxLines > 1 ? `<textarea maxlength="${item.maxLength || ""}" rows="${Math.min(item.maxLines || 3, 5)}">${escapeHtml(value)}</textarea>` : `<input type="text" maxlength="${item.maxLength || ""}" value="${escapeHtml(value)}" placeholder="${escapeHtml(item.placeholder || "")}">`}<div class="amzcustom-meta"><span>${value.length}${item.maxLength ? `/${item.maxLength}` : ""}</span></div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
-    if (type === "image") { const active = state.activeEdit === `image:${item.id}`; return `<section class="amzcustom-control ${active ? "is-editing" : ""}" data-id="${item.id}">${controlHeader(item)}<input class="amzcustom-file ${state.images[item.id] ? "is-hidden" : ""}" type="file" accept="image/png,image/jpeg,image/webp">${state.images[item.id] ? `<div class="amzcustom-upload-row"><img src="${escapeHtml(state.images[item.id].dataUrl)}" alt=""><div class="amzcustom-actions">${imageActionButton(active ? "done" : "edit", active ? "Done" : "Edit", active ? "done" : "edit")}${imageActionButton("replace", "Replace", "replace")}${imageActionButton("delete", "Delete", "delete")}</div></div>` : ""}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`; }
+    if (type === "image") { const active = state.activeEdit === `image:${item.id}`; return `<section class="amzcustom-control ${active ? "is-editing" : ""}" data-id="${item.id}">${controlHeader(item)}<input class="amzcustom-file is-hidden" type="file" accept="image/png,image/jpeg,image/webp">${state.images[item.id] ? `<div class="amzcustom-upload-row"><img src="${escapeHtml(state.images[item.id].dataUrl)}" alt=""><div class="amzcustom-actions">${imageActionButton(active ? "done" : "edit", active ? "Done" : "Edit", active ? "done" : "edit")}${imageActionButton("replace", "Replace", "replace")}${imageActionButton("delete", "Delete", "delete")}</div></div>` : uploadButtonHtml()}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`; }
     if (type === "font") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}${fontDropdownHtml(state, item)}</section>`;
     if (type === "color") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-swatches">${item.options.map((color) => `<button type="button" class="amzcustom-swatch ${state.colors[item.id] === color.id ? "is-selected" : ""}" data-color="${escapeHtml(color.id)}" style="--swatch:${escapeHtml(color.value || "#fff")}" title="${escapeHtml(color.name)}"><span>${escapeHtml(color.name)}</span></button>`).join("")}</div></section>`;
     return "";
@@ -414,11 +423,69 @@
       }
     });
   }
+  function hideHelpTips(root) {
+    root.querySelectorAll(".amzcustom-help-trigger.is-open").forEach((item) => item.classList.remove("is-open", "is-above", "is-below"));
+  }
+  function usesHoverHelp() {
+    return window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches;
+  }
+  function showHelpTip(root, trigger) {
+    hideHelpTips(root);
+    trigger.classList.add("is-open");
+    positionHelpTip(trigger);
+  }
+  function positionHelpTip(trigger) {
+    const text = trigger.dataset.help || "";
+    if (!text) return;
+    const rect = trigger.getBoundingClientRect();
+    const margin = 8;
+    const width = Math.min(360, window.innerWidth - margin * 2);
+    const lineCount = Math.ceil(text.length / 42);
+    const estimatedHeight = Math.min(180, Math.max(52, lineCount * 18 + 26));
+    const showBelow = rect.bottom + estimatedHeight + 14 <= window.innerHeight || rect.top < estimatedHeight + 14;
+    const left = clamp(rect.left + rect.width / 2 - width / 2, margin, window.innerWidth - width - margin);
+    const top = showBelow ? rect.bottom + 10 : clamp(rect.top - estimatedHeight - 10, margin, window.innerHeight - estimatedHeight - margin);
+    trigger.style.setProperty("--help-left", `${left}px`);
+    trigger.style.setProperty("--help-top", `${top}px`);
+    trigger.style.setProperty("--help-width", `${width}px`);
+    trigger.classList.toggle("is-below", showBelow);
+    trigger.classList.toggle("is-above", !showBelow);
+  }
   function fileData(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => { const image = new Image(); image.onload = () => resolve({ file, dataUrl: reader.result, width: image.naturalWidth || 1, height: image.naturalHeight || 1 }); image.onerror = () => resolve({ file, dataUrl: reader.result, width: 1, height: 1 }); image.src = reader.result; }; reader.readAsDataURL(file); }); }
   function bindControls(instance) {
     if (instance.controlsBound) return;
     instance.controlsBound = true;
-    q(instance.modal, ".amzcustom-controls").addEventListener("click", (event) => {
+    const controls = q(instance.modal, ".amzcustom-controls");
+    controls.addEventListener("pointerover", (event) => {
+      if (!usesHoverHelp()) return;
+      const helpTrigger = event.target.closest(".amzcustom-help-trigger");
+      if (helpTrigger) showHelpTip(instance.modal, helpTrigger);
+    });
+    controls.addEventListener("pointerout", (event) => {
+      if (!usesHoverHelp()) return;
+      const helpTrigger = event.target.closest(".amzcustom-help-trigger");
+      if (helpTrigger && !helpTrigger.contains(event.relatedTarget)) hideHelpTips(instance.modal);
+    });
+    controls.addEventListener("focusin", (event) => {
+      const helpTrigger = event.target.closest(".amzcustom-help-trigger");
+      if (helpTrigger) showHelpTip(instance.modal, helpTrigger);
+    });
+    controls.addEventListener("focusout", (event) => {
+      const helpTrigger = event.target.closest(".amzcustom-help-trigger");
+      if (helpTrigger && !helpTrigger.contains(event.relatedTarget)) hideHelpTips(instance.modal);
+    });
+    controls.addEventListener("click", (event) => {
+      const helpTrigger = event.target.closest(".amzcustom-help-trigger");
+      if (helpTrigger) {
+        if (usesHoverHelp()) return;
+        const wasOpen = helpTrigger.classList.contains("is-open");
+        hideHelpTips(instance.modal);
+        if (!wasOpen) {
+          showHelpTip(instance.modal, helpTrigger);
+        }
+        return;
+      }
+      if (!event.target.closest(".amzcustom-help-trigger")) hideHelpTips(instance.modal);
       const optionsToggle = event.target.closest("[data-options-toggle]");
       if (optionsToggle) {
         const id = optionsToggle.dataset.optionsToggle;

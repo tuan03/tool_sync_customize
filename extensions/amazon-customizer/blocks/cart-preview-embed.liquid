@@ -1,9 +1,137 @@
+<style>
+  /* Hide addon rows immediately */
+  tr:has(a[href*="amazon-customization-addon"]),
+  .cart-item:has(a[href*="amazon-customization-addon"]),
+  .cart-row:has(a[href*="amazon-customization-addon"]),
+  [data-cart-item]:has(a[href*="amazon-customization-addon"]),
+  .cart-items td:has(a[href*="amazon-customization-addon"]) {
+    display: none !important;
+  }
+
+  /* Hide the image and price of detected customized items until JS processes them */
+  .amzcustom-shielded:not(.amzcustom-processed) img,
+  .amzcustom-shielded:not(.amzcustom-processed) [class*="price"] {
+    opacity: 0 !important;
+  }
+
+  /* Hide the cart count bubble/badge until processed */
+  .amzcustom-count-shielded:not(.amzcustom-count-processed) {
+    opacity: 0 !important;
+  }
+</style>
+
+<script>
+  (function() {
+    const selectors = [
+      '.cart-count-bubble', 
+      '.cart-count', 
+      '#cart-icon-bubble', 
+      '[data-cart-count]', 
+      '.header__cart-count', 
+      '.cart-link__count', 
+      '.cart-item-count', 
+      '.cart-items-count',
+      '.cart-items__count',
+      '.cart-counter',
+      '.cart-link .count',
+      '#CartCount',
+      'h1 .badge',
+      '.cart__title .badge',
+      '.title-wrapper .badge',
+      'h1 span',
+      '.cart__title span',
+      '.title-wrapper span',
+      '.cart-header span'
+    ];
+
+    const observer = new MutationObserver((mutations) => {
+      let checkRows = false;
+      let checkCounts = false;
+
+      for (let i = 0; i < mutations.length; i++) {
+        const addedNodes = mutations[i].addedNodes;
+        for (let j = 0; j < addedNodes.length; j++) {
+          const node = addedNodes[j];
+          if (node.nodeType === 1) { // Element node
+            checkRows = true;
+            checkCounts = true;
+            break;
+          }
+        }
+        if (checkRows) break;
+      }
+
+      if (checkRows) {
+        const rows = document.querySelectorAll('tr, .cart-item, .cart-row, [data-cart-item]');
+        rows.forEach(row => {
+          // Hide addon rows immediately
+          if (row.querySelector('a[href*="amazon-customization-addon"]')) {
+            row.style.setProperty("display", "none", "important");
+            row.classList.add("amzcustom-addon-hidden");
+            return;
+          }
+          // Shield only our customized products
+          if (row.innerHTML.includes('Customization:') && !row.classList.contains('amzcustom-shielded')) {
+            row.classList.add('amzcustom-shielded');
+          }
+        });
+      }
+
+      if (checkCounts) {
+        selectors.forEach(sel => {
+          document.querySelectorAll(sel).forEach(el => {
+            if (!el.classList.contains('amzcustom-count-processed') && !el.classList.contains('amzcustom-count-shielded')) {
+              el.classList.add('amzcustom-count-shielded');
+            }
+          });
+        });
+
+        try {
+          const cachedReal = localStorage.getItem("amzcustom_real_cart_count");
+          const cachedRaw = localStorage.getItem("amzcustom_raw_cart_count");
+          if (cachedReal !== null && cachedRaw !== null) {
+            const raw = String(cachedRaw);
+            const real = String(cachedReal);
+            selectors.forEach(sel => {
+              document.querySelectorAll(sel).forEach(el => {
+                if (!el.classList.contains('amzcustom-count-processed')) {
+                  const txt = el.textContent.trim();
+                  if (txt === raw) {
+                    el.textContent = real;
+                    el.classList.add('amzcustom-count-processed');
+                  } else if (el.querySelector('span')) {
+                    el.querySelectorAll('span').forEach(span => {
+                      if (span.textContent.trim() === raw) {
+                        span.textContent = real;
+                        el.classList.add('amzcustom-count-processed');
+                      }
+                    });
+                  }
+                }
+              });
+            });
+          }
+        } catch (e) {}
+      }
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+
+    document.addEventListener("DOMContentLoaded", () => {
+      observer.disconnect();
+    });
+  })();
+</script>
+
 <script src="{{ 'amazon-customizer-cart.js' | asset_url }}" defer></script>
 
 {% schema %}
 {
   "name": "Customizer cart previews",
-  "target": "body",
+  "target": "head",
   "settings": []
 }
 {% endschema %}

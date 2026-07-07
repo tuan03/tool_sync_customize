@@ -613,6 +613,11 @@
       const manifestUrl = `data:application/json;base64,${btoa(unescape(encodeURIComponent(JSON.stringify(manifest))))}`;
       const manifestFile = await upload(instance, manifestUrl);
       const summary = Object.values(instance.state.texts).filter(Boolean).join(" | ").slice(0, 220) || "Customized product";
+      try {
+        localStorage.setItem("amzcustom_preview_" + instance.root.dataset.variantId, previewFile.url);
+        const surchargeCents = Math.round(surcharge(instance) * 100);
+        localStorage.setItem("amzcustom_surcharge_" + instance.root.dataset.variantId, String(surchargeCents));
+      } catch (e) {}
       const properties={ Customization:summary, "_customization_id":customizationId, "_customization_preview":previewFile.url, "_customization_manifest":manifestFile.url, "_customization_fee":String(manifest.surcharge), "_customization_options":JSON.stringify(instance.state.options), "_customization_schema":String(instance.config.schemaVersion) };
       const items = [{ id:Number(instance.root.dataset.variantId), quantity:1, properties }];
       const feeCounts={}; for(const group of instance.config.optionGroups){const option=selected(group,instance.state);if(option?.cost>0)feeCounts[option.cost]=(feeCounts[option.cost]||0)+1;}
@@ -630,6 +635,19 @@
     document.body.appendChild(modal); const instance={root,modal,config,state:initialState(config)}; instances.set(root,instance);
     q(root,".amzcustom-open").addEventListener("click",()=>{ modal.hidden=false; document.body.classList.add("amzcustom-locked"); renderControls(instance); scheduleFontReadyRender(instance); });
     const close=()=>{modal.hidden=true;document.body.classList.remove("amzcustom-locked");}; q(modal,".amzcustom-close").addEventListener("click",close); q(modal,".amzcustom-backdrop").addEventListener("click",close); q(modal,".amzcustom-add").addEventListener("click",()=>finish(instance));
+    const form = root.closest('form[action*="/cart/add"]');
+    if (form) {
+      form.addEventListener("submit", () => {
+        const variantId = form.querySelector('[name="id"]')?.value || root.dataset.variantId;
+        if (variantId) {
+          try {
+            localStorage.removeItem("amzcustom_preview_" + variantId);
+            localStorage.removeItem("amzcustom_surcharge_" + variantId);
+            localStorage.removeItem("amzcustom_unit_price_" + variantId);
+          } catch (e) {}
+        }
+      });
+    }
   }
   document.querySelectorAll("[data-amzcustom-root]").forEach(create);
 })();

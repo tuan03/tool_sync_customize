@@ -5,3 +5,4 @@ dist/
 coverage/
 *.log
 shopify.app.jeminise-customizer.toml
+shopify.app.toml

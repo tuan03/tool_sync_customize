@@ -2,7 +2,7 @@
 
 client_id = "5806d58aa47058c823c21d0ca93e2814"
 name = "abcd"
-application_url = "https://twins-fellow-stats-intervention.trycloudflare.com/admin.html"
+application_url = "https://hollywood-managers-set-trio.trycloudflare.com/admin.html"
 embedded = true
 
 [webhooks]
@@ -18,6 +18,6 @@ use_legacy_install_flow = false
 redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
 
 [app_proxy]
-url = "https://twins-fellow-stats-intervention.trycloudflare.com/api/shopify/proxy"
+url = "https://hollywood-managers-set-trio.trycloudflare.com/api/shopify/proxy"
 subpath = "amazon-customizer"
 prefix = "apps"

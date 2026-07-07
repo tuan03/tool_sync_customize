@@ -144,6 +144,12 @@
       instance.fontReadyRenderQueued = false;
     });
   }
+  function triggerFileInput(root) {
+    const input = root?.querySelector(".amzcustom-file");
+    if (!input) return;
+    input.value = "";
+    input.click();
+  }
   function isBackgroundOptionGroup(group) {
     return /background\s*color/i.test(`${group.label || ""} ${group.instructions || ""}`);
   }
@@ -170,7 +176,7 @@
       const layer = document.createElement("div"); layer.className = `amzcustom-layer amzcustom-image-layer ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, box(config, input.placementId, state));
       const transform = state.imageTransforms[input.id] || { x: 0, y: 0, scale: 1, rotation: 0 };
       const fit = fitBoxStyle(state.images[input.id]);
-      layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="${fit}transform:${transformStyle(transform)}"><img alt="" src="${escapeHtml(state.images[input.id].dataUrl)}"></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box" style="${fit}transform:${transformStyle(transform)}"><div class="amzcustom-layer-tools"><button type="button" data-layer-action="done">Done</button><button type="button" data-layer-action="replace">Replace</button><button type="button" data-layer-action="delete">Delete</button></div><button type="button" class="amzcustom-rotate-handle" data-transform-handle="rotate" aria-label="Rotate"></button><button type="button" class="amzcustom-resize-handle nw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle ne" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle sw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle se" data-transform-handle="resize" aria-label="Resize"></button></div>` : ""}`;
+      layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="${fit}transform:${transformStyle(transform)}"><img alt="" src="${escapeHtml(state.images[input.id].dataUrl)}"></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box"><button type="button" class="amzcustom-rotate-handle" data-transform-handle="rotate" aria-label="Rotate"></button><button type="button" class="amzcustom-resize-handle nw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle ne" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle sw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle se" data-transform-handle="resize" aria-label="Resize"></button></div>` : ""}`;
       stage.appendChild(layer);
     }
     renderOptionOverlays(instance, (group) => !isBackgroundOptionGroup(group), "amzcustom-stage-overlay");
@@ -184,8 +190,8 @@
       const font = fontGroup?.options.find((item) => item.id === state.fonts[fontGroup.id]);
       const color = colorGroup?.options.find((item) => item.id === state.colors[colorGroup.id]);
       ensureFontLoaded(font);
-      const transform = state.textTransforms[input.id] || { x: 0, y: 0 };
-      layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="transform:${transformStyle({ ...transform, scale: 1, rotation: 0 })}"><span>${escapeHtml(isSingleLineText(input) ? state.texts[input.id].replace(/\r?\n/g, " ") : state.texts[input.id])}</span></div></div>`;
+      const transform = state.textTransforms[input.id] || { x: 0, y: 0, scale: 1, rotation: 0 };
+      layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="transform:${transformStyle(transform)}"><span>${escapeHtml(isSingleLineText(input) ? state.texts[input.id].replace(/\r?\n/g, " ") : state.texts[input.id])}</span></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box"><button type="button" class="amzcustom-rotate-handle" data-transform-handle="rotate" aria-label="Rotate"></button><button type="button" class="amzcustom-resize-handle nw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle ne" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle sw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle se" data-transform-handle="resize" aria-label="Resize"></button></div>` : ""}`;
       const fontFamily = cssFontFamily(font?.family || "Arial");
       layer.style.fontFamily = fontFamily; layer.style.color = color?.value || "#000";
       layer.style.fontSize = textFontSize(instance, input, boxStyles, state.texts[input.id], fontFamily);
@@ -193,17 +199,95 @@
     }
     if (surface?.maskImage?.url) stage.insertAdjacentHTML("beforeend", `<img class="amzcustom-stage-mask" alt="" src="${escapeHtml(asset(surface.maskImage.url))}">`);
     bindPreviewDrag(instance);
+    syncEditBoxes(stage);
     q(instance.modal, ".amzcustom-price").textContent = `Phụ phí: ${surcharge(instance).toLocaleString()} VND`;
   }
   function bindPreviewDrag(instance) {
-    const stage=q(instance.modal,".amzcustom-stage"), size=instance.config.product.previewSize||400;
+    const stage=q(instance.modal,".amzcustom-stage");
+    if (!stage.dataset.clearEditBound) {
+      stage.dataset.clearEditBound = "true";
+      stage.addEventListener("pointerdown", (event) => {
+        if (event.target.closest("[data-layer-action],[data-transform-handle]")) return;
+        const layers = [...stage.querySelectorAll(".amzcustom-layer[data-edit-id]")].reverse();
+        const hitLayer = layers.find((item) => pointHitsLayer(item, event));
+        const targetLayer = event.target.closest(".amzcustom-layer[data-edit-id]");
+        if (hitLayer) {
+          if (hitLayer !== targetLayer) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            startPreviewEdit(instance, stage, hitLayer, event, "move");
+          }
+          return;
+        }
+        if (instance.state.activeEdit) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          instance.state.activeEdit = "";
+          renderControls(instance);
+        }
+      }, true);
+    }
     stage.querySelectorAll(".amzcustom-layer[data-edit-id]").forEach((layer)=>{
-      layer.style.cursor="move";
-      layer.addEventListener("pointerdown",(event)=>{ if (event.target.closest("[data-layer-action]")) return; event.preventDefault(); instance.state.activeEdit = layer.dataset.editId; stage.querySelectorAll(".amzcustom-layer.is-active-edit").forEach((item)=>item.classList.remove("is-active-edit")); layer.classList.add("is-active-edit"); const [type,id]=layer.dataset.editId.split(":"); const start={x:event.clientX,y:event.clientY}; const rect=layer.getBoundingClientRect(); const box=layer.querySelector(".amzcustom-edit-box") || layer.querySelector(".amzcustom-transform-box"); const boxRect=box.getBoundingClientRect(); const bucket=type==="image"?instance.state.imageTransforms:instance.state.textTransforms; const original={x:0,y:0,scale:1,rotation:0,...(bucket[id]||{})}; const center={x:boxRect.left+boxRect.width/2,y:boxRect.top+boxRect.height/2}; const startDistance=Math.hypot(start.x-center.x,start.y-center.y)||1; const startAngle=Math.atan2(start.y-center.y,start.x-center.x)*180/Math.PI; const handle=event.target.closest("[data-transform-handle]")?.dataset.transformHandle || "move";
-        const move=(next)=>{ if (handle==="resize") { const distance=Math.hypot(next.clientX-center.x,next.clientY-center.y)||1; bucket[id]={...original,scale:clamp(original.scale*distance/startDistance,.3,4)}; } else if (handle==="rotate") { const angle=Math.atan2(next.clientY-center.y,next.clientX-center.x)*180/Math.PI; bucket[id]={...original,rotation:Math.round(original.rotation+angle-startAngle)}; } else { const dx=(next.clientX-start.x)/rect.width*100, dy=(next.clientY-start.y)/rect.height*100; bucket[id]={...original,x:clamp(original.x+dx,-50,50),y:clamp(original.y+dy,-50,50)}; } layer.querySelectorAll(".amzcustom-transform-box,.amzcustom-edit-box").forEach((item)=>{ item.style.transform=transformStyle(bucket[id]); });};
-        const up=()=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);renderPreview(instance);};window.addEventListener("pointermove",move);window.addEventListener("pointerup",up);
+      layer.addEventListener("pointerdown",(event)=>{ if (event.target.closest("[data-layer-action]")) return; const handle=event.target.closest("[data-transform-handle]")?.dataset.transformHandle || ""; if (!handle && !pointHitsLayer(layer, event)) return; startPreviewEdit(instance, stage, layer, event, handle || "move");
       });
     });
+  }
+  function pointHitsLayer(layer, event) {
+    const box = layer.classList.contains("amzcustom-image-layer") ? layer.querySelector("img") : layer.querySelector(".amzcustom-transform-box");
+    const rect = box?.getBoundingClientRect();
+    return !!rect && event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+  }
+  function syncEditBoxes(stage) {
+    stage.querySelectorAll(".amzcustom-layer.is-active-edit").forEach(syncEditBox);
+  }
+  function syncEditBox(layer) {
+    const imageBox = layer.classList.contains("amzcustom-image-layer") ? layer.querySelector("img") : layer.querySelector(".amzcustom-transform-box");
+    const editBox = layer.querySelector(".amzcustom-edit-box");
+    if (!imageBox || !editBox) return;
+    const imageRect = imageBox.getBoundingClientRect();
+    const layerRect = layer.getBoundingClientRect();
+    Object.assign(editBox.style, {
+      left: `${imageRect.left - layerRect.left}px`,
+      top: `${imageRect.top - layerRect.top}px`,
+      width: `${imageRect.width}px`,
+      height: `${imageRect.height}px`,
+      transform: "none",
+      translate: "0 0"
+    });
+  }
+  function visualRect(layer) {
+    return (layer.classList.contains("amzcustom-image-layer") ? layer.querySelector("img") : layer.querySelector(".amzcustom-transform-box"))?.getBoundingClientRect();
+  }
+  function isOutsidePreview(stage, layer) {
+    const stageRect = stage.getBoundingClientRect();
+    const rect = visualRect(layer);
+    return !rect || rect.right < stageRect.left || rect.left > stageRect.right || rect.bottom < stageRect.top || rect.top > stageRect.bottom;
+  }
+  function startPreviewEdit(instance, stage, layer, event, action) {
+    event.preventDefault();
+    try { layer.setPointerCapture?.(event.pointerId); } catch {}
+    instance.state.activeEdit = layer.dataset.editId;
+    stage.querySelectorAll(".amzcustom-layer.is-active-edit").forEach((item)=>item.classList.remove("is-active-edit"));
+    layer.classList.add("is-active-edit");
+    const [type,id]=layer.dataset.editId.split(":");
+    const start={x:event.clientX,y:event.clientY};
+    const rect=layer.getBoundingClientRect();
+    const box=layer.querySelector(".amzcustom-edit-box") || layer.querySelector(".amzcustom-transform-box");
+    const boxRect=box.getBoundingClientRect();
+    const bucket=type==="image"?instance.state.imageTransforms:instance.state.textTransforms;
+    const original={x:0,y:0,scale:1,rotation:0,...(bucket[id]||{})};
+    const center={x:boxRect.left+boxRect.width/2,y:boxRect.top+boxRect.height/2};
+    const startDistance=Math.hypot(start.x-center.x,start.y-center.y)||1;
+    const startAngle=Math.atan2(start.y-center.y,start.x-center.x)*180/Math.PI;
+    let syncFrame = 0;
+    const scheduleSync = () => {
+      if (syncFrame) return;
+      syncFrame = requestAnimationFrame(() => { syncFrame = 0; syncEditBox(layer); });
+    };
+    const moveBase = type === "image" ? (layer.querySelector("img")?.getBoundingClientRect() || boxRect) : boxRect;
+    const move=(next)=>{ if (action==="resize") { const distance=Math.hypot(next.clientX-center.x,next.clientY-center.y)||1; bucket[id]={...original,scale:clamp(original.scale*distance/startDistance,.3,4)}; } else if (action==="rotate") { const angle=Math.atan2(next.clientY-center.y,next.clientX-center.x)*180/Math.PI; bucket[id]={...original,rotation:Math.round(original.rotation+angle-startAngle)}; } else { const dx=(next.clientX-start.x)/Math.max(1,moveBase.width)*100, dy=(next.clientY-start.y)/Math.max(1,moveBase.height)*100; const limit=100000; bucket[id]={...original,x:clamp(original.x+dx,-limit,limit),y:clamp(original.y+dy,-limit,limit)}; } layer.querySelectorAll(".amzcustom-transform-box").forEach((item)=>{ item.style.transform=transformStyle(bucket[id]); }); scheduleSync();};
+    const up=(next)=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);try { layer.releasePointerCapture?.(next.pointerId); } catch {} if(syncFrame) cancelAnimationFrame(syncFrame); if(action==="move" && type==="image" && isOutsidePreview(stage, layer)) bucket[id]=original; renderPreview(instance);};
+    window.addEventListener("pointermove",move);window.addEventListener("pointerup",up);
   }
   function controlHeader(item, value) {
     const suffix = value ? `: ${value}` : "";
@@ -224,6 +308,10 @@
   function isYesNoGroup(item) {
     const labels = (item.options || []).map((option) => String(option.label || "").trim().toUpperCase()).sort();
     return labels.length === 2 && labels[0] === "NO" && labels[1] === "YES";
+  }
+  function isInlineChoiceGroup(item) {
+    const options = item.options || [];
+    return options.length > 0 && options.length <= 3 && options.every((option) => !option.thumbnailImage && !option.overlayImage && !option.cost);
   }
   function isTextChoiceGroup(item) {
     const label = String(item.label || "");
@@ -260,7 +348,7 @@
     const primaryIds = new Set(primaryOptions.map((option) => option.id));
     const overflowOptions = shouldCollapse ? item.options.filter((option) => !primaryIds.has(option.id)) : [];
     const overflow = shouldCollapse && expanded ? `<div class="amzcustom-options-list">${overflowOptions.map((option) => { const img = option.thumbnailImage || option.overlayImage; return `<button type="button" class="amzcustom-option-row ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="overflow" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-row-icon"></span>`}<span>${escapeHtml(option.label)}</span></button>`; }).join("")}</div>` : "";
-    return `<div class="amzcustom-choices ${isYesNoGroup(item) ? "is-yes-no" : ""} ${isTextChoiceGroup(item) ? "is-text-choice" : ""} ${shouldCollapse ? "is-collapsed" : ""} ${expanded ? "is-expanded" : ""}">${choices}</div>${toggle}${overflow}`;
+    return `<div class="amzcustom-choices ${isYesNoGroup(item) ? "is-yes-no" : ""} ${isInlineChoiceGroup(item) ? "is-inline-choice" : ""} ${isTextChoiceGroup(item) ? "is-text-choice" : ""} ${shouldCollapse ? "is-collapsed" : ""} ${expanded ? "is-expanded" : ""}">${choices}</div>${toggle}${overflow}`;
   }
   function controlHtml(instance, type, item) {
     if (!visible(instance, item)) return "";
@@ -268,7 +356,7 @@
     if (type === "option") {
       const hasImages = item.options.some((option) => option.thumbnailImage || option.overlayImage);
       const selectedValue = item.options.find((option) => option.id === state.options[item.id])?.label || "";
-      if (item.displayHint === "choice-grid" || hasImages || isTextChoiceGroup(item)) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      if (item.displayHint === "choice-grid" || hasImages || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
       return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(option.cost)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
     if (type === "text") {
@@ -351,7 +439,7 @@
         const id = imageAction.closest("[data-id]").dataset.id;
         if (imageAction.dataset.imageAction === "edit") return startEdit(instance, `image:${id}`);
         if (imageAction.dataset.imageAction === "done") return endEdit(instance);
-        if (imageAction.dataset.imageAction === "replace") imageAction.closest("[data-id]").querySelector(".amzcustom-file").click();
+        if (imageAction.dataset.imageAction === "replace") return triggerFileInput(imageAction.closest("[data-id]"));
         if (imageAction.dataset.imageAction === "delete") { delete instance.state.images[id]; delete instance.state.imageTransforms[id]; if (instance.state.activeEdit === `image:${id}`) instance.state.activeEdit = ""; }
         renderControls(instance); return;
       }
@@ -359,7 +447,7 @@
         const layer = layerAction.closest("[data-edit-id]"), [type,id] = layer.dataset.editId.split(":");
         if (layerAction.dataset.layerAction === "done") return endEdit(instance);
         if (layerAction.dataset.layerAction === "delete") { if (type === "image") { delete instance.state.images[id]; delete instance.state.imageTransforms[id]; } else { instance.state.texts[id] = ""; delete instance.state.textTransforms[id]; } instance.state.activeEdit = ""; renderControls(instance); }
-        if (layerAction.dataset.layerAction === "replace") q(instance.modal, `[data-id="${CSS.escape(id)}"] .amzcustom-file`)?.click();
+        if (layerAction.dataset.layerAction === "replace") return triggerFileInput(q(instance.modal, `[data-id="${CSS.escape(id)}"]`));
         return;
       }
       const button = option || font || color; if (!button) return;

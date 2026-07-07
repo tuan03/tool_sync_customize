@@ -600,9 +600,7 @@
   };
 
   async function syncCartQuantities(mainItems, addons) {
-    console.log("[AmzCustomCartDebug] syncCartQuantities starting", { mainItems, addons });
     if (updatingCart) {
-      console.log("[AmzCustomCartDebug] syncCartQuantities already updating, aborting");
       return false;
     }
 
@@ -611,10 +609,8 @@
 
     for (const mainItem of mainItems) {
       const associatedAddons = addons.filter(addon => addon.properties._customization_id === mainItem.properties._customization_id);
-      console.log(`[AmzCustomCartDebug] mainItem ${mainItem.key} quantity ${mainItem.quantity}, associatedAddons:`, associatedAddons);
       for (const addon of associatedAddons) {
         if (addon.quantity !== mainItem.quantity) {
-          console.log(`[AmzCustomCartDebug] Quantity mismatch for addon ${addon.key}: addon qty ${addon.quantity} !== main qty ${mainItem.quantity}`);
           updates[addon.key] = mainItem.quantity;
           needsUpdate = true;
         }
@@ -624,7 +620,6 @@
     for (const addon of addons) {
       const hasMainItem = mainItems.some(mainItem => mainItem.properties._customization_id === addon.properties._customization_id);
       if (!hasMainItem && addon.quantity > 0) {
-        console.log(`[AmzCustomCartDebug] Orphaned addon found: ${addon.key}, setting qty to 0`);
         updates[addon.key] = 0;
         needsUpdate = true;
       }
@@ -632,21 +627,17 @@
 
     if (needsUpdate) {
       updatingCart = true;
-      console.log("[AmzCustomCartDebug] syncCartQuantities needs update, sending updates:", updates);
       try {
         const response = await fetch(`${window.Shopify.routes.root}cart/update.js`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ updates })
         });
-        console.log("[AmzCustomCartDebug] syncCartQuantities response status:", response.status);
         if (response.ok) {
-          console.log("[AmzCustomCartDebug] syncCartQuantities success, reloading page");
           window.location.reload();
           return true;
         }
       } catch (error) {
-        console.warn("[AmzCustomCartDebug] syncCartQuantities error", error);
       } finally {
         updatingCart = false;
       }
@@ -657,16 +648,13 @@
   async function applyPreviews() {
     if (running) return;
     running = true;
-    console.log("[AmzCustomCartDebug] applyPreviews() starting");
     try {
       const response = await fetch(`${window.Shopify.routes.root}cart.js`, {
         headers: { accept: "application/json" },
         credentials: "same-origin",
       });
-      console.log("[AmzCustomCartDebug] fetch cart.js status:", response.status);
       if (!response.ok) return;
       const cart = await response.json();
-      console.log("[AmzCustomCartDebug] fetched cart data:", cart);
 
       // We start DOM mutations here. Disconnect the observer to prevent infinite loops.
       if (cartObserver) {
@@ -686,7 +674,6 @@
 
         const didSync = await syncCartQuantities(mainItems, addons);
         if (didSync) {
-          console.log("[AmzCustomCartDebug] syncCartQuantities triggered a reload, aborting render");
           return;
         }
 
@@ -694,7 +681,6 @@
         const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(currency);
         const format = window.Shopify?.theme?.money_format || window.Shopify?.money_format || window.theme?.moneyFormat || "${{amount}}";
 
-        console.log("[AmzCustomCartDebug] Processing cart rows in applyPreviews");
         document.querySelectorAll('tr, .cart-item, .cart-row, [data-cart-item]').forEach((row, rowIndex) => {
           let item = null;
           const lineIndex = getLineIndexFromRow(row, cart.items || []);
@@ -806,7 +792,6 @@
   let cartObserver = null;
 
   function schedule() {
-    console.log("[AmzCustomCartDebug] schedule() called");
     applyInstantPreviews();
 
     // Only fetch cart.js if there are cart elements (cart page, cart drawer, or cart popups)
@@ -837,11 +822,9 @@
   cartObserver = new MutationObserver((mutations) => {
     runCount++;
     if (runCount > 150) {
-      console.warn("[AmzCustomCartDebug] Disconnected cart observer due to excessive runs. Count:", runCount);
       cartObserver.disconnect();
       return;
     }
-    console.log(`[AmzCustomCartDebug] Mutation detected (run: ${runCount})`);
     schedule();
   });
   cartObserver.observe(document.documentElement, { childList: true, subtree: true });

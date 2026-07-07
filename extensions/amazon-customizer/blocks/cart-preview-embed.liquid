@@ -22,7 +22,6 @@
 
 <script>
   (function() {
-    console.log("[AmzCustomObserver] Starting embed script");
     const selectors = [
       '.cart-count-bubble', 
       '.cart-count', 
@@ -49,7 +48,6 @@
     const observer = new MutationObserver((mutations) => {
       runCount++;
       if (runCount > 150) {
-        console.warn("[AmzCustomObserver] Disconnected embed observer due to excessive runs. Count:", runCount);
         observer.disconnect();
         return;
       }
@@ -71,8 +69,6 @@
       }
 
       if (!checkRows && !checkCounts) return;
-
-      console.log(`[AmzCustomObserver] Running check (run: ${runCount})`);
 
       // Disconnect observer temporarily to prevent infinite loops from our own mutations
       observer.disconnect();
@@ -149,7 +145,6 @@
     });
 
     document.addEventListener("DOMContentLoaded", () => {
-      console.log("[AmzCustomObserver] DOMContentLoaded, disconnecting embed observer. Total runs:", runCount);
       observer.disconnect();
     });
   })();

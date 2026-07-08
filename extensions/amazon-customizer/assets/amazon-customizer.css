@@ -152,12 +152,12 @@
 .amzcustom-actions button:hover { background: #f7fafa; }
 .amzcustom-actions svg { width: 24px; height: 24px; stroke: currentColor; stroke-width: 2; fill: none; }
 .amzcustom-control.is-editing .amzcustom-actions button:first-child { color: #007185; background: #e6f7fb; font-weight: 700; }
-.amzcustom-editor-modal { position: fixed; inset: 0; z-index: 2147483002; display: grid; place-items: center; padding: 0; background: rgba(0,0,0,.56); }
-.amzcustom-editor-dialog { width: min(1180px,100vw); height: min(840px,100dvh); display: grid; grid-template-rows: auto minmax(0,1fr); overflow: hidden; background: #fff; color: #111; box-shadow: 0 20px 80px rgba(0,0,0,.34); }
-.amzcustom-editor-head { min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px; border-bottom: 1px solid #d5d9d9; background: #fff; }
+.amzcustom-editor-modal { position: fixed; inset: 0; z-index: 2147483002; display: grid; place-items: stretch; padding: 0; background: rgba(0,0,0,.56); }
+.amzcustom-editor-dialog { width: 100vw; height: 100dvh; display: grid; grid-template-rows: auto minmax(0,1fr); overflow: hidden; background: #fff; color: #111; box-shadow: none; }
+.amzcustom-editor-head { min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #d5d9d9; background: #fff; }
 .amzcustom-editor-head h3 { margin: 0; font-size: 18px; line-height: 1.2; font-weight: 800; }
 .amzcustom-editor-head > div { display: flex; gap: 10px; }
-.amzcustom-editor-head button { min-width: 90px; min-height: 42px; border: 1px solid #d5d9d9; border-radius: 8px; background: #fff; color: #111; font: inherit; cursor: pointer; }
+.amzcustom-editor-head button { min-width: 78px; min-height: 44px; border: 1px solid #d5d9d9; border-radius: 8px; background: #fff; color: #111; font: inherit; cursor: pointer; }
 .amzcustom-editor-head button.primary { border-color: #ffd814; background: #ffd814; font-weight: 800; }
 .amzcustom-editor-body { position: relative; min-height: 0; background: #f6f6f6; }
 .amzcustom-editor-container { position: absolute; inset: 0; }
@@ -169,11 +169,14 @@
 .amzcustom-editor-container .tui-image-editor-header,
 .amzcustom-editor-container .tui-image-editor-controls,
 .amzcustom-editor-container .tui-image-editor-help-menu { background: #fff !important; }
-.amzcustom-editor-container .tui-image-editor-header { height: 52px !important; min-width: 0 !important; border-bottom: 1px solid #e3e6e6; }
-.amzcustom-editor-container .tui-image-editor-main-container { top: 52px !important; bottom: 190px !important; height: auto !important; }
+.amzcustom-editor-container .tui-image-editor-header { height: 44px !important; min-width: 0 !important; border-bottom: 1px solid #e3e6e6; }
+.amzcustom-editor-container .tui-image-editor-main-container { top: 44px !important; bottom: 76px !important; height: auto !important; overflow: hidden !important; }
 .amzcustom-editor-container .tui-image-editor-main { top: 0 !important; bottom: 0 !important; height: auto !important; }
-.amzcustom-editor-container .tui-image-editor-controls { height: 64px !important; bottom: 0 !important; border-top: 1px solid #e3e6e6; z-index: 4 !important; }
-.amzcustom-editor-container .tui-image-editor-submenu { bottom: 64px !important; height: 126px !important; overflow-x: auto !important; overflow-y: hidden !important; background: rgba(255,255,255,.96) !important; border-top: 1px solid #e3e6e6; z-index: 3 !important; }
+.amzcustom-editor-container .tui-image-editor-wrap { display: flex !important; align-items: center !important; justify-content: center !important; overflow: hidden !important; }
+.amzcustom-editor-container .tui-image-editor-controls { height: 76px !important; bottom: 0 !important; overflow-x: auto !important; overflow-y: hidden !important; border-top: 1px solid #e3e6e6; white-space: nowrap !important; -webkit-overflow-scrolling: touch !important; z-index: 4 !important; }
+.amzcustom-editor-container .tui-image-editor-menu { display: flex !important; justify-content: flex-start !important; min-width: max-content !important; padding: 0 96px 0 12px !important; }
+.amzcustom-editor-container .tui-image-editor-menu > .tui-image-editor-item { flex: 0 0 48px !important; min-width: 48px !important; min-height: 48px !important; }
+.amzcustom-editor-container .tui-image-editor-submenu { bottom: 76px !important; height: 112px !important; overflow-x: auto !important; overflow-y: hidden !important; background: rgba(255,255,255,.96) !important; border-top: 1px solid #e3e6e6; -webkit-overflow-scrolling: touch !important; z-index: 3 !important; }
 .amzcustom-editor-container .tui-image-editor-submenu,
 .amzcustom-editor-container .tui-image-editor-submenu > div,
 .amzcustom-editor-container .tui-image-editor-submenu .tui-image-editor-submenu-item { color: #111 !important; opacity: 1 !important; }
@@ -216,6 +219,15 @@ body.amzcustom-locked { overflow: hidden; }
 @media (min-width: 761px) {
   .amzcustom-modal { place-items: center; padding: 20px; }
   .amzcustom-dialog { width: min(1180px,100%); height: auto; max-height: min(920px,94vh); border-radius: 8px; }
+  .amzcustom-editor-modal { place-items: center; }
+  .amzcustom-editor-dialog { width: min(1180px,100vw); height: min(840px,100dvh); box-shadow: 0 20px 80px rgba(0,0,0,.34); }
+  .amzcustom-editor-head { min-height: 56px; gap: 12px; padding: 10px 18px; }
+  .amzcustom-editor-head button { min-width: 90px; }
+  .amzcustom-editor-container .tui-image-editor-header { height: 52px !important; }
+  .amzcustom-editor-container .tui-image-editor-main-container { top: 52px !important; bottom: 190px !important; }
+  .amzcustom-editor-container .tui-image-editor-controls { height: 64px !important; overflow: visible !important; white-space: normal !important; }
+  .amzcustom-editor-container .tui-image-editor-menu { justify-content: center !important; padding: 0 12px !important; }
+  .amzcustom-editor-container .tui-image-editor-submenu { bottom: 64px !important; height: 126px !important; }
   .amzcustom-head { min-height: 0; padding: 14px 18px; }
   .amzcustom-head h2 { font-size: 20px; }
   .amzcustom-body { grid-template-columns: minmax(300px,.88fr) minmax(320px,1.12fr); gap: 14px; padding: 14px; }

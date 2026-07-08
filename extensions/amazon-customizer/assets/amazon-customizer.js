@@ -223,6 +223,47 @@
       .amzcustom-editor-modal .tui-image-editor-virtual-range-pointer {
         background: #111 !important;
       }
+      @media (max-width: 760px) {
+        .amzcustom-editor-modal {
+          align-items: stretch !important;
+          justify-items: stretch !important;
+        }
+        .amzcustom-editor-modal .tui-image-editor-header {
+          height: 48px !important;
+        }
+        .amzcustom-editor-modal .tui-image-editor-main-container {
+          top: 48px !important;
+          bottom: 74px !important;
+          overflow: hidden !important;
+        }
+        .amzcustom-editor-modal .tui-image-editor-main {
+          overflow: hidden !important;
+        }
+        .amzcustom-editor-modal .tui-image-editor-wrap {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          overflow: hidden !important;
+        }
+        .amzcustom-editor-modal .tui-image-editor-controls {
+          height: 74px !important;
+          overflow-x: auto !important;
+          overflow-y: hidden !important;
+          white-space: nowrap !important;
+          -webkit-overflow-scrolling: touch !important;
+        }
+        .amzcustom-editor-modal .tui-image-editor-menu {
+          min-width: max-content !important;
+          padding: 0 12px !important;
+        }
+        .amzcustom-editor-modal .tui-image-editor-submenu {
+          bottom: 74px !important;
+          height: 112px !important;
+          overflow-x: auto !important;
+          overflow-y: hidden !important;
+          -webkit-overflow-scrolling: touch !important;
+        }
+      }
     `;
     document.head.appendChild(style);
   }
@@ -264,13 +305,16 @@
       await ensureImageEditorAssets();
       ensureImageEditorOverrideStyle();
       modal.querySelector(".amzcustom-editor-loading")?.remove();
+      const isMobileEditor = window.matchMedia("(max-width: 760px)").matches;
+      const editorMaxWidth = isMobileEditor ? Math.max(260, window.innerWidth - 32) : Math.max(320, Math.min(920, window.innerWidth - 80));
+      const editorMaxHeight = isMobileEditor ? Math.max(220, window.innerHeight - 300) : Math.max(260, Math.min(620, window.innerHeight - 210));
       editor = new window.tui.ImageEditor(modal.querySelector(".amzcustom-editor-container"), {
         includeUI: {
           loadImage: { path: image.dataUrl, name: image.file?.name || "Custom image" },
           menuBarPosition: "bottom"
         },
-        cssMaxWidth: Math.max(320, Math.min(920, window.innerWidth - 80)),
-        cssMaxHeight: Math.max(260, Math.min(620, window.innerHeight - 210)),
+        cssMaxWidth: editorMaxWidth,
+        cssMaxHeight: editorMaxHeight,
         usageStatistics: false
       });
       const editorContainer = modal.querySelector(".amzcustom-editor-container");

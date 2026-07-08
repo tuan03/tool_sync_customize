@@ -2,6 +2,7 @@
   "use strict";
   const instances = new WeakMap();
   const loadedFonts = new Set();
+  let imageEditorAssetsPromise = null;
   const COLLAPSED_OPTION_LIMIT = 10;
   const q = (root, selector) => root.querySelector(selector);
   const escapeHtml = (value) => String(value == null ? "" : value).replace(/[&<>"']/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
@@ -74,6 +75,232 @@
       link.rel = "stylesheet";
       link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.family).replace(/%20/g, "+")}&display=swap`;
       document.head.appendChild(link);
+    }
+  }
+  function loadExternalStyle(url) {
+    if ([...document.querySelectorAll("link[href]")].some((link) => link.href === url)) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = url;
+      link.onload = resolve;
+      link.onerror = () => reject(new Error(`Could not load stylesheet: ${url}`));
+      document.head.appendChild(link);
+    });
+  }
+  function loadExternalScript(url) {
+    if ([...document.querySelectorAll("script[src]")].some((script) => script.src === url)) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = url;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error(`Could not load script: ${url}`));
+      document.head.appendChild(script);
+    });
+  }
+  function ensureImageEditorAssets() {
+    if (window.tui?.ImageEditor) return Promise.resolve();
+    if (!imageEditorAssetsPromise) {
+      imageEditorAssetsPromise = (async () => {
+        await Promise.all([
+          loadExternalStyle("https://uicdn.toast.com/tui-color-picker/v2.2.6/tui-color-picker.css"),
+          loadExternalStyle("https://uicdn.toast.com/tui-image-editor/v3.15.3/tui-image-editor.css")
+        ]);
+        await loadExternalScript("https://cdnjs.cloudflare.com/ajax/libs/fabric.js/4.4.0/fabric.min.js");
+        await loadExternalScript("https://uicdn.toast.com/tui.code-snippet/v1.5.0/tui-code-snippet.min.js");
+        await loadExternalScript("https://uicdn.toast.com/tui-color-picker/v2.2.6/tui-color-picker.min.js");
+        await loadExternalScript("https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/1.3.3/FileSaver.min.js");
+        await loadExternalScript("https://uicdn.toast.com/tui-image-editor/v3.15.3/tui-image-editor.min.js");
+      })();
+    }
+    return imageEditorAssetsPromise;
+  }
+  function ensureImageEditorOverrideStyle() {
+    if (document.getElementById("amzcustom-editor-overrides")) return;
+    const style = document.createElement("style");
+    style.id = "amzcustom-editor-overrides";
+    style.textContent = `
+      .amzcustom-editor-modal .tui-image-editor-container,
+      .amzcustom-editor-modal .tui-image-editor-header,
+      .amzcustom-editor-modal .tui-image-editor-main-container,
+      .amzcustom-editor-modal .tui-image-editor-main,
+      .amzcustom-editor-modal .tui-image-editor-wrap,
+      .amzcustom-editor-modal .tui-image-editor-controls,
+      .amzcustom-editor-modal .tui-image-editor-help-menu,
+      .amzcustom-editor-modal .tui-image-editor-help-menu.top {
+        background: #fff !important;
+        color: #111 !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-header {
+        height: 52px !important;
+        min-width: 0 !important;
+        border-bottom: 1px solid #e3e6e6 !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-main-container {
+        top: 52px !important;
+        bottom: 190px !important;
+        height: auto !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-main {
+        top: 0 !important;
+        bottom: 0 !important;
+        height: auto !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-controls {
+        height: 64px !important;
+        bottom: 0 !important;
+        border-top: 1px solid #e3e6e6 !important;
+        z-index: 4 !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-submenu {
+        bottom: 64px !important;
+        height: 126px !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        background: #fff !important;
+        border-top: 1px solid #e3e6e6 !important;
+        z-index: 3 !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-submenu,
+      .amzcustom-editor-modal .tui-image-editor-submenu *,
+      .amzcustom-editor-modal .tui-image-editor-container label,
+      .amzcustom-editor-modal .tui-image-editor-container span,
+      .amzcustom-editor-modal .tui-image-editor-container input,
+      .amzcustom-editor-modal .tui-image-editor-container button {
+        color: #111 !important;
+        opacity: 1 !important;
+        text-shadow: none !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-header-logo,
+      .amzcustom-editor-modal .tui-image-editor-header-buttons,
+      .amzcustom-editor-modal .tui-image-editor-submenu-style {
+        display: none !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-help-menu.top {
+        width: auto !important;
+        min-width: 0 !important;
+        box-shadow: none !important;
+        border: 1px solid #e3e6e6 !important;
+        border-radius: 999px !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-help-menu.top > .tui-image-editor-item {
+        display: none !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-help-menu.top > .tui-image-editor-item[tooltip-content="Undo"],
+      .amzcustom-editor-modal .tui-image-editor-help-menu.top > .tui-image-editor-item[tooltip-content="Redo"],
+      .amzcustom-editor-modal .tui-image-editor-help-menu.top > .tui-image-editor-item[tooltip-content="Reset"] {
+        display: inline-block !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-menu > .tui-image-editor-item {
+        background: transparent !important;
+        opacity: 1 !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-menu > .tui-image-editor-item.active {
+        background: #eef6f8 !important;
+        box-shadow: inset 0 0 0 1px #007185 !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-container svg,
+      .amzcustom-editor-modal .tui-image-editor-container svg use {
+        color: #111 !important;
+        fill: #111 !important;
+        stroke: #111 !important;
+        opacity: 1 !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-checkbox input + label:before,
+      .amzcustom-editor-modal .tui-image-editor-checkbox > label > span:before {
+        border: 1px solid #8d9096 !important;
+        background-color: #fff !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-range-value {
+        background: #fff !important;
+        color: #111 !important;
+        border-color: #8d9096 !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-virtual-range-bar {
+        background: #9ca3af !important;
+      }
+      .amzcustom-editor-modal .tui-image-editor-virtual-range-subbar,
+      .amzcustom-editor-modal .tui-image-editor-virtual-range-pointer {
+        background: #111 !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  function imageDataFromUrl(dataUrl, file) {
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve({ file, dataUrl, width: image.naturalWidth || 1, height: image.naturalHeight || 1 });
+      image.onerror = () => resolve({ file, dataUrl, width: 1, height: 1 });
+      image.src = dataUrl;
+    });
+  }
+  function forceStyle(element, styles) {
+    if (!element) return;
+    for (const [key, value] of Object.entries(styles)) element.style.setProperty(key, value, "important");
+  }
+  function restyleImageEditor(modal) {
+    const root = modal.querySelector(".tui-image-editor-container");
+    if (!root) return;
+    root.querySelectorAll(".tui-image-editor-header,.tui-image-editor-header *,.tui-image-editor-help-menu,.tui-image-editor-help-menu *,.tui-image-editor-main-container,.tui-image-editor-main,.tui-image-editor-wrap,.tui-image-editor-controls,.tui-image-editor-controls *,.tui-image-editor-submenu,.tui-image-editor-submenu > div,.tui-image-editor-submenu .tui-image-editor-submenu-item").forEach((item) => forceStyle(item, { background: "#fff", color: "#111", opacity: "1" }));
+    root.querySelectorAll(".tui-image-editor-submenu *,.tui-image-editor-submenu label,.tui-image-editor-submenu span,label,span,.tui-image-editor-range-wrap label,.tui-image-editor-submenu label > span").forEach((item) => forceStyle(item, { color: "#111", opacity: "1", textShadow: "none" }));
+    root.querySelectorAll("svg,svg use").forEach((item) => forceStyle(item, { color: "#111", fill: "#111", stroke: "#111", opacity: "1" }));
+    root.querySelectorAll(".tui-image-editor-submenu-style").forEach((item) => forceStyle(item, { display: "none", background: "transparent" }));
+    forceStyle(root.querySelector(".tui-image-editor-help-menu.top"), { background: "#fff", color: "#111", boxShadow: "none" });
+  }
+  async function openImageEditor(instance, id) {
+    const image = instance.state.images[id];
+    if (!image?.dataUrl) return;
+    const modal = document.createElement("div");
+    modal.className = "amzcustom-editor-modal";
+    modal.innerHTML = `<div class="amzcustom-editor-dialog" role="dialog" aria-modal="true" aria-label="Edit image"><div class="amzcustom-editor-head"><h3>Edit image</h3><div><button type="button" data-editor-cancel>Cancel</button><button type="button" class="primary" data-editor-save>Save</button></div></div><div class="amzcustom-editor-body"><div class="amzcustom-editor-loading">Loading editor...</div><div class="amzcustom-editor-container"></div></div></div>`;
+    document.body.appendChild(modal);
+    let close = (editor) => {
+      try { editor?.destroy?.(); } catch {}
+      modal.remove();
+    };
+    let editor = null;
+    modal.querySelector("[data-editor-cancel]").addEventListener("click", () => close(editor));
+    try {
+      await ensureImageEditorAssets();
+      ensureImageEditorOverrideStyle();
+      modal.querySelector(".amzcustom-editor-loading")?.remove();
+      editor = new window.tui.ImageEditor(modal.querySelector(".amzcustom-editor-container"), {
+        includeUI: {
+          loadImage: { path: image.dataUrl, name: image.file?.name || "Custom image" },
+          menuBarPosition: "bottom"
+        },
+        cssMaxWidth: Math.max(320, Math.min(920, window.innerWidth - 80)),
+        cssMaxHeight: Math.max(260, Math.min(620, window.innerHeight - 210)),
+        usageStatistics: false
+      });
+      const editorContainer = modal.querySelector(".amzcustom-editor-container");
+      let restyleQueued = false;
+      const scheduleRestyle = () => {
+        if (restyleQueued) return;
+        restyleQueued = true;
+        requestAnimationFrame(() => {
+          restyleQueued = false;
+          restyleImageEditor(modal);
+          setTimeout(() => restyleImageEditor(modal), 60);
+        });
+      };
+      const observer = new MutationObserver(scheduleRestyle);
+      observer.observe(editorContainer, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style"] });
+      const originalClose = close;
+      close = (activeEditor) => {
+        observer.disconnect();
+        originalClose(activeEditor);
+      };
+      editorContainer.addEventListener("click", scheduleRestyle);
+      requestAnimationFrame(() => { editor?.ui?.resizeEditor?.(); scheduleRestyle(); setTimeout(scheduleRestyle, 160); setTimeout(scheduleRestyle, 420); });
+      modal.querySelector("[data-editor-save]").addEventListener("click", async () => {
+        const dataUrl = editor.toDataURL();
+        instance.state.images[id] = await imageDataFromUrl(dataUrl, image.file);
+        close(editor);
+        renderControls(instance);
+      });
+    } catch (error) {
+      modal.querySelector(".amzcustom-editor-loading").textContent = error.message || "Could not load image editor.";
     }
   }
   function activeStyleGroup(instance, item, groups) {
@@ -593,7 +820,7 @@
       const imageAction = event.target.closest("[data-image-action]"), layerAction = event.target.closest("[data-layer-action]");
       if (imageAction) {
         const id = imageAction.closest("[data-id]").dataset.id;
-        if (imageAction.dataset.imageAction === "edit") return startEdit(instance, `image:${id}`);
+        if (imageAction.dataset.imageAction === "edit") return openImageEditor(instance, id);
         if (imageAction.dataset.imageAction === "done") return endEdit(instance);
         if (imageAction.dataset.imageAction === "replace") return triggerFileInput(imageAction.closest("[data-id]"));
         if (imageAction.dataset.imageAction === "delete") { delete instance.state.images[id]; delete instance.state.imageTransforms[id]; if (instance.state.activeEdit === `image:${id}`) instance.state.activeEdit = ""; }

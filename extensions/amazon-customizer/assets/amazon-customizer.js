@@ -411,7 +411,7 @@
       item.options = Array.isArray(item.options) ? item.options : [];
       const hasImages = item.options.some((option) => option.thumbnailImage || option.overlayImage);
       const selectedValue = item.options.find((option) => option.id === state.options[item.id])?.label || "";
-      if (item.displayHint === "choice-grid" || hasImages || isSizeChoiceGroup(item) || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      if (item.displayHint === "choice-grid" || hasImages || isYesNoGroup(item) || isSizeChoiceGroup(item) || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
       return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(option.cost)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
     if (type === "text") {
@@ -428,6 +428,11 @@
     const active = document.activeElement?.closest?.("[data-id]");
     const activeId = active?.dataset.id || "";
     const choices = activeId ? q(instance.modal, `[data-id="${CSS.escape(activeId)}"] .amzcustom-choices`) : null;
+    const choicesById = {};
+    q(instance.modal, ".amzcustom-controls")?.querySelectorAll(".amzcustom-control[data-id] .amzcustom-choices").forEach((item) => {
+      const id = item.closest(".amzcustom-control")?.dataset.id;
+      if (id) choicesById[id] = item.scrollLeft;
+    });
     return {
       dialog,
       dialogScrollTop: dialog ? dialog.scrollTop : 0,
@@ -435,6 +440,7 @@
       windowY: window.scrollY,
       activeId,
       choicesScrollLeft: choices ? choices.scrollLeft : null,
+      choicesById,
     };
   }
   function restoreScrollState(instance, state) {
@@ -444,6 +450,10 @@
     if (state.choicesScrollLeft != null && state.activeId) {
       const choices = q(instance.modal, `[data-id="${CSS.escape(state.activeId)}"] .amzcustom-choices`);
       if (choices) choices.scrollLeft = state.choicesScrollLeft;
+    }
+    for (const [id, scrollLeft] of Object.entries(state.choicesById || {})) {
+      const choices = q(instance.modal, `[data-id="${CSS.escape(id)}"] .amzcustom-choices`);
+      if (choices) choices.scrollLeft = scrollLeft;
     }
     window.scrollTo(state.windowX, state.windowY);
   }

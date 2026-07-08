@@ -466,7 +466,7 @@
     const section = createControlGroup(group.label, group.required, group.instructions, selectedValue);
     section.dataset.controlId = group.id;
     const hasImages = group.options.some((option) => option.thumbnailImage || option.overlayImage);
-    const renderAsGrid = group.displayHint !== "select" || hasImages || isTextChoiceGroup(group);
+    const renderAsGrid = group.displayHint !== "select" || hasImages || isYesNoGroup(group) || isTextChoiceGroup(group);
 
     if (renderAsGrid) {
       const grid = document.createElement("div");
@@ -892,6 +892,11 @@
   }
 
   function renderControls() {
+    const optionScrollById = {};
+    elements.controls.querySelectorAll("[data-control-id] .option-grid").forEach((item) => {
+      const id = item.closest("[data-control-id]")?.dataset.controlId;
+      if (id) optionScrollById[id] = item.scrollLeft;
+    });
     elements.controls.innerHTML = "";
 
     const maps = {
@@ -938,7 +943,18 @@
 
     elements.controls.className = "";
     for (const control of controls) elements.controls.appendChild(control);
-    requestAnimationFrame(positionOptionLists);
+    const restoreOptionScroll = () => {
+      for (const [id, scrollLeft] of Object.entries(optionScrollById)) {
+        const grid = elements.controls.querySelector(`[data-control-id="${CSS.escape(id)}"] .option-grid`);
+        if (grid) grid.scrollLeft = scrollLeft;
+      }
+    };
+    restoreOptionScroll();
+    requestAnimationFrame(() => {
+      restoreOptionScroll();
+      positionOptionLists();
+      setTimeout(restoreOptionScroll, 0);
+    });
   }
 
   function positionOptionLists() {

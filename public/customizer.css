@@ -255,13 +255,15 @@ button:disabled {
 .placement-layer.is-draggable {
   pointer-events: auto;
   cursor: move;
-  outline: 1px dashed rgba(23, 105, 224, 0.65);
+  outline: 1.5px dashed rgba(23, 105, 224, 0.9);
   outline-offset: 2px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.72);
 }
 
 .placement-layer.is-active-edit {
-  outline: 2px solid var(--accent);
+  outline: 2px solid #ff9900;
   outline-offset: 3px;
+  box-shadow: 0 0 0 1px rgba(17, 17, 17, 0.22), 0 0 0 2px rgba(255, 255, 255, 0.72);
 }
 
 .placement-layer img {

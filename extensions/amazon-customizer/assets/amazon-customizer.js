@@ -300,6 +300,14 @@
     const rect = visualRect(layer);
     return !rect || rect.right < stageRect.left || rect.left > stageRect.right || rect.bottom < stageRect.top || rect.top > stageRect.bottom;
   }
+  function intersectsPlacement(layer) {
+    const rect = visualRect(layer);
+    const layerRect = layer.getBoundingClientRect();
+    if (!rect || !layerRect) return false;
+    const overlapX = Math.min(rect.right, layerRect.right) - Math.max(rect.left, layerRect.left);
+    const overlapY = Math.min(rect.bottom, layerRect.bottom) - Math.max(rect.top, layerRect.top);
+    return overlapX > 1 && overlapY > 1;
+  }
   function startPreviewEdit(instance, stage, layer, event, action) {
     event.preventDefault();
     try { layer.setPointerCapture?.(event.pointerId); } catch {}
@@ -323,7 +331,7 @@
     };
     const moveBase = type === "image" ? (layer.querySelector("img")?.getBoundingClientRect() || boxRect) : boxRect;
     const move=(next)=>{ if (action==="resize") { const distance=Math.hypot(next.clientX-center.x,next.clientY-center.y)||1; bucket[id]={...original,scale:clamp(original.scale*distance/startDistance,.3,4)}; } else if (action==="rotate") { const angle=Math.atan2(next.clientY-center.y,next.clientX-center.x)*180/Math.PI; bucket[id]={...original,rotation:Math.round(original.rotation+angle-startAngle)}; } else { const dx=(next.clientX-start.x)/Math.max(1,moveBase.width)*100, dy=(next.clientY-start.y)/Math.max(1,moveBase.height)*100; const limit=100000; bucket[id]={...original,x:clamp(original.x+dx,-limit,limit),y:clamp(original.y+dy,-limit,limit)}; } layer.querySelectorAll(".amzcustom-transform-box").forEach((item)=>{ item.style.transform=transformStyle(bucket[id]); }); scheduleSync();};
-    const up=(next)=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);try { layer.releasePointerCapture?.(next.pointerId); } catch {} if(syncFrame) cancelAnimationFrame(syncFrame); if(action==="move" && type==="image" && isOutsidePreview(stage, layer)) bucket[id]=original; renderPreview(instance);};
+    const up=(next)=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);try { layer.releasePointerCapture?.(next.pointerId); } catch {} if(syncFrame) cancelAnimationFrame(syncFrame); if(type==="image" && action==="move" && (isOutsidePreview(stage, layer) || !intersectsPlacement(layer))) bucket[id]={x:0,y:0,scale:1,rotation:0}; renderPreview(instance);};
     window.addEventListener("pointermove",move);window.addEventListener("pointerup",up);
   }
   function controlHeader(item, value) {

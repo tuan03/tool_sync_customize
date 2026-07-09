@@ -169,6 +169,7 @@ async function handleShopifySync(req, res) {
     }
     const product = await admin.product(body.productId || "");
     const definition = await admin.ensureCustomizerDefinition(apply);
+    const cartTransform = await admin.ensureCartTransform(apply);
     const assetResult = await syncConfigAssets(admin, config, apply);
     config = assetResult.config;
     const surcharge = await admin.ensureSurchargeProduct(config.pricing.amounts, apply);
@@ -186,7 +187,7 @@ async function handleShopifySync(req, res) {
       externalConfig = { enabled: true, file: externalFile, metafieldBytes };
     }
     const metafield = await admin.setCustomizer(product.id, metafieldConfig, apply);
-    jsonResponse(res, 200, { ok: true, apply, product: { id: product.id, title: product.title }, definition, assets: assetResult.assets, metafield, bytes, externalConfig, pricing: { currency: "VND", amounts: config.pricing.amounts, surcharge } });
+    jsonResponse(res, 200, { ok: true, apply, product: { id: product.id, title: product.title }, definition, cartTransform, assets: assetResult.assets, metafield, bytes, externalConfig, pricing: { currency: "VND", amounts: config.pricing.amounts, surcharge } });
   } catch (error) {
     jsonResponse(res, 400, { ok: false, error: error.message });
   }

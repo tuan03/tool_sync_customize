@@ -13,6 +13,17 @@
         <h1>Amazon Customizer Sync</h1>
         <p>Dán raw <code>gc:app-config</code>, kiểm tra kết quả rồi đồng bộ vào product metafield.</p>
       </header>
+      <section id="proxy-panel" class="proxy-panel" aria-live="polite">
+        <div>
+          <span class="proxy-kicker">Proxy</span>
+          <strong id="proxy-state">Đang kiểm tra...</strong>
+        </div>
+        <div class="proxy-detail">
+          <span id="proxy-url">-</span>
+          <span id="proxy-location">-</span>
+          <span id="proxy-shop">-</span>
+        </div>
+      </section>
       <section class="card form-grid">
         <label>Shopify Product ID
           <input id="product-id" placeholder="11053922189479 hoặc gid://shopify/Product/…">

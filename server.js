@@ -5,8 +5,10 @@ const { URL } = require("url");
 const crypto = require("crypto");
 const { normalizeAmazonConfig, byteSize, MAX_METAFIELD_BYTES, replaceAssetUrls } = require("./lib/amazon-config");
 const { ShopifyAdmin } = require("./lib/shopify-admin");
+const { configureProxy, proxyStatusWithLocation } = require("./lib/proxy");
 
 const PORT = Number(process.env.PORT || 3000);
+configureProxy();
 const PUBLIC_DIR = path.join(__dirname, "public");
 const AMAZON_COOKIE = process.env.AMAZON_COOKIE || "";
 const DEFAULT_HEADERS = {
@@ -147,6 +149,15 @@ async function handleShopifyConvert(req, res) {
   } catch (error) {
     jsonResponse(res, 400, { ok: false, error: error.message });
   }
+}
+
+async function handleAdminStatus(req, res) {
+  jsonResponse(res, 200, {
+    ok: true,
+    proxy: await proxyStatusWithLocation(),
+    shop: process.env.SHOPIFY_SHOP || "",
+    apiVersion: process.env.SHOPIFY_API_VERSION || "2026-04",
+  });
 }
 
 async function handleShopifySync(req, res) {
@@ -919,6 +930,11 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && requestUrl.pathname === "/api/custom-form") {
     handleCustomForm(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && requestUrl.pathname === "/api/admin/status") {
+    handleAdminStatus(req, res).catch((error) => jsonResponse(res, 500, { ok: false, error: error.message }));
     return;
   }
 

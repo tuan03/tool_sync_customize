@@ -19,5 +19,8 @@
   "type": "commonjs",
   "devDependencies": {
     "playwright": "^1.61.1"
+  },
+  "dependencies": {
+    "undici": "^8.7.0"
   }
 }

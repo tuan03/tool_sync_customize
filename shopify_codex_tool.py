@@ -50,6 +50,8 @@ DEFAULT_SCOPES = ",".join([
     "write_content",
 ])
 
+CURRENT_CONFIG: Dict[str, str] = {}
+
 
 class ToolError(Exception):
     pass
@@ -96,12 +98,14 @@ def write_env_value(path: str | Path, key: str, value: str) -> None:
 
 
 def load_config(args: argparse.Namespace) -> Dict[str, str]:
+    global CURRENT_CONFIG
     env_file = getattr(args, "env_file", None) or os.environ.get("SHOPIFY_ENV_FILE", DEFAULT_ENV_FILE)
     file_env = read_env_file(env_file)
     cfg = {**file_env, **{k: v for k, v in os.environ.items() if k.startswith("SHOPIFY_")}}
     cfg["SHOPIFY_ENV_FILE"] = str(env_file)
     cfg.setdefault("SHOPIFY_API_VERSION", DEFAULT_API_VERSION)
     cfg.setdefault("SHOPIFY_SCOPES", DEFAULT_SCOPES)
+    CURRENT_CONFIG = cfg
     return cfg
 
 
@@ -134,6 +138,37 @@ def read_text_file(path: str | Path) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
+def proxy_enabled() -> bool:
+    value = CURRENT_CONFIG.get("SHOPIFY_PROXY_ENABLED") or os.environ.get("SHOPIFY_PROXY_ENABLED") or ""
+    return str(value).strip() == "1"
+
+
+def proxy_url() -> str:
+    raw = CURRENT_CONFIG.get("SHOPIFY_PROXY_URL") or os.environ.get("SHOPIFY_PROXY_URL") or ""
+    if not raw:
+        raise ToolError("SHOPIFY_PROXY_URL is required when SHOPIFY_PROXY_ENABLED=1.")
+    parsed = urllib.parse.urlsplit(raw)
+    username = CURRENT_CONFIG.get("SHOPIFY_PROXY_USERNAME") or os.environ.get("SHOPIFY_PROXY_USERNAME") or ""
+    password = CURRENT_CONFIG.get("SHOPIFY_PROXY_PASSWORD") or os.environ.get("SHOPIFY_PROXY_PASSWORD") or ""
+    if username and not parsed.username:
+        netloc = parsed.hostname or ""
+        if parsed.port:
+            netloc = f"{netloc}:{parsed.port}"
+        auth = urllib.parse.quote(username, safe="")
+        if password:
+            auth += ":" + urllib.parse.quote(password, safe="")
+        parsed = parsed._replace(netloc=f"{auth}@{netloc}")
+    return urllib.parse.urlunsplit(parsed)
+
+
+def open_url(req: urllib.request.Request, timeout: int):
+    if not proxy_enabled():
+        return urllib.request.urlopen(req, timeout=timeout)
+    uri = proxy_url()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": uri, "https": uri}))
+    return opener.open(req, timeout=timeout)
+
+
 def http_json(method: str, url: str, payload: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     body: Optional[bytes] = None
     req_headers = {"Content-Type": "application/json", "Accept": "application/json"}
@@ -143,7 +178,7 @@ def http_json(method: str, url: str, payload: Optional[Dict[str, Any]] = None, h
         body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=body, headers=req_headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with open_url(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8")
             if not raw:
                 return {}
@@ -821,7 +856,7 @@ def cmd_staged_upload_file(args: argparse.Namespace) -> None:
     body, boundary = make_multipart_form(params, (args.file_field, path.name, content, content_type))
     req = urllib.request.Request(url, data=body, headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with open_url(req, timeout=120) as resp:
             result = {"ok": True, "status": resp.status, "resourceUrl": target.get("resourceUrl"), "response": resp.read().decode("utf-8", errors="replace")}
     except urllib.error.HTTPError as exc:
         result = {"ok": False, "status": exc.code, "error": exc.read().decode("utf-8", errors="replace")}

@@ -157,10 +157,10 @@ async function handleShopifySync(req, res) {
     const admin = new ShopifyAdmin();
     let config = body.normalizedConfig || normalizeAmazonConfig(body.config, body.sourceUrl || "");
     config = JSON.parse(JSON.stringify(config));
-    const hasFractionalVnd = config.pricing.amounts.some((amount) => !Number.isInteger(Number(amount)));
+    const hasFractionalAmounts = config.pricing.amounts.some((amount) => !Number.isInteger(Number(amount)));
     const priceMultiplier = Number(body.priceMultiplier);
-    if (hasFractionalVnd && (!Number.isFinite(priceMultiplier) || priceMultiplier <= 0)) {
-      throw new Error("Amazon surcharge contains decimal amounts but the shop currency is VND. Enter an explicit price multiplier before Sync.");
+    if (hasFractionalAmounts && (!Number.isFinite(priceMultiplier) || priceMultiplier <= 0)) {
+      throw new Error("Amazon surcharge contains decimal amounts. Enter an explicit price multiplier before Sync if your Shopify variant pricing needs conversion.");
     }
     if (Number.isFinite(priceMultiplier) && priceMultiplier > 0 && priceMultiplier !== 1) {
       for (const group of config.optionGroups) for (const option of group.options) option.cost = Math.round(Number(option.cost || 0) * priceMultiplier);
@@ -173,7 +173,7 @@ async function handleShopifySync(req, res) {
     const assetResult = await syncConfigAssets(admin, config, apply);
     config = assetResult.config;
     const surcharge = await admin.ensureSurchargeProduct(config.pricing.amounts, apply);
-    config.pricing.currencyCode = "VND";
+    config.pricing.currencyCode = "USD";
     config.pricing.surchargeProductId = surcharge.productId || null;
     config.pricing.variantIds = surcharge.variants || {};
     const bytes = byteSize(config);
@@ -187,7 +187,7 @@ async function handleShopifySync(req, res) {
       externalConfig = { enabled: true, file: externalFile, metafieldBytes };
     }
     const metafield = await admin.setCustomizer(product.id, metafieldConfig, apply);
-    jsonResponse(res, 200, { ok: true, apply, product: { id: product.id, title: product.title }, definition, cartTransform, assets: assetResult.assets, metafield, bytes, externalConfig, pricing: { currency: "VND", amounts: config.pricing.amounts, surcharge } });
+    jsonResponse(res, 200, { ok: true, apply, product: { id: product.id, title: product.title }, definition, cartTransform, assets: assetResult.assets, metafield, bytes, externalConfig, pricing: { currency: "USD", amounts: config.pricing.amounts, surcharge } });
   } catch (error) {
     jsonResponse(res, 400, { ok: false, error: error.message });
   }

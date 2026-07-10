@@ -57,7 +57,9 @@
     }
     return { options, fonts, colors, texts: {}, images: {}, imageTransforms: {}, textTransforms: {}, placementOffsets: {}, visible: {}, errors: {}, activeEdit: "", expandedOptionGroups: {}, promotedOptionIds: {} };
   }
-  function formatMoney(value) { return `${Number(value || 0).toLocaleString()} VND`; }
+  function formatMoney(value) {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(value || 0));
+  }
   function cssFontFamily(family) {
     return `"${String(family || "").replace(/"/g, '\\"')}", Arial, Helvetica, sans-serif`;
   }
@@ -537,7 +539,7 @@
     if (surface?.maskImage?.url) stage.insertAdjacentHTML("beforeend", `<img class="amzcustom-stage-mask" alt="" src="${escapeHtml(asset(surface.maskImage.url))}">`);
     bindPreviewDrag(instance);
     syncEditBoxes(stage);
-    q(instance.modal, ".amzcustom-price").textContent = `Phụ phí: ${surcharge(instance).toLocaleString()} VND`;
+    q(instance.modal, ".amzcustom-price").textContent = `Surcharge: ${formatMoney(surcharge(instance))}`;
   }
   function bindPreviewDrag(instance) {
     const stage=q(instance.modal,".amzcustom-stage");
@@ -1074,7 +1076,7 @@
       const items = [{ id:Number(instance.root.dataset.variantId), quantity:1, properties }];
       
       const feeCounts={}; for(const group of instance.config.optionGroups){const option=selected(group,instance.state);if(option?.cost>0)feeCounts[option.cost]=(feeCounts[option.cost]||0)+1;}
-      for(const [amount,quantity] of Object.entries(feeCounts)){const gid=instance.config.pricing.variantIds?.[amount];if(!gid)throw new Error(`Thiếu add-on variant cho phụ phí ${amount} VND. Hãy Sync lại product.`);items.push({id:Number(String(gid).split("/").pop()),parent_id:Number(instance.root.dataset.variantId),quantity,properties:{"_customization_id":customizationId,"_customization_parent_variant":instance.root.dataset.variantId,"_customization_fee_component":amount}});}
+      for(const [amount,quantity] of Object.entries(feeCounts)){const gid=instance.config.pricing.variantIds?.[amount];if(!gid)throw new Error(`Missing add-on variant for surcharge ${formatMoney(amount)}. Please sync the product again.`);items.push({id:Number(String(gid).split("/").pop()),parent_id:Number(instance.root.dataset.variantId),quantity,properties:{"_customization_id":customizationId,"_customization_parent_variant":instance.root.dataset.variantId,"_customization_fee_component":amount}});}
       
       const addResponse = await fetch(`${window.Shopify.routes.root}cart/add.js`, { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({items}) });
       

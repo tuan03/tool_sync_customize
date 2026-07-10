@@ -304,11 +304,11 @@ Nhập:
 - Shopify Product ID: ID sản phẩm thật cần custom.
 - Admin secret: giá trị CUSTOMIZER_ADMIN_SECRET trong .env.shopify.
 - Raw Amazon JSON: JSON gc:app-config vừa copy.
-- Price multiplier -> VND: hệ số chuyển phí Amazon sang VND.
+- Price multiplier: hệ số chuyển phí Amazon sang đơn vị giá bạn muốn lưu trong Shopify.
 
-Ví dụ phí Amazon đang giống USD và muốn dùng tỷ giá cố định 25.000 VND:
+Ví dụ nếu phí Amazon đã đúng theo USD và không cần quy đổi:
 
-25000
+1
 
 Thao tác theo đúng thứ tự:
 
@@ -316,7 +316,7 @@ Thao tác theo đúng thứ tự:
 2. Kiểm tra ASIN, controls, assets và surcharge.
 3. Đảm bảo normalized JSON nhỏ hơn 131.072 bytes.
 4. Bấm Dry-run Sync.
-5. Kiểm tra đúng tên product và mức giá VND.
+5. Kiểm tra đúng tên product và mức giá USD.
 6. Bấm Sync to Shopify và xác nhận.
 
 Sync thật có thể mất vài phút vì app phải upload ảnh, overlay và font sang Shopify Files.
@@ -326,7 +326,7 @@ Sync sẽ tạo/cập nhật:
 - Product metafield custom.amazon_customizer.
 - Shopify Files dùng cho config.
 - Sản phẩm nội bộ Customization Add-on.
-- Các variant phụ phí VND.
+- Các variant phụ phí USD.
 
 Sản phẩm Customization Add-on là tài nguyên nội bộ do app quản lý:
 
@@ -401,10 +401,10 @@ B. Không upload được ảnh
 - Kiểm tra app_proxy.url dùng đúng URL cloudflared hiện tại.
 - Deploy lại sau khi đổi URL.
 
-C. Dry-run báo phí thập phân trên shop VND
+C. Dry-run báo phí thập phân
 
 - Nhập Price multiplier rõ ràng.
-- Không để Shopify tạo giá như 2.95 VND.
+- Nhập Price multiplier rõ ràng nếu cần quy đổi trước khi Sync.
 - Kiểm tra lại các mức phụ phí trước khi Sync thật.
 
 D. JSON vượt 128KB

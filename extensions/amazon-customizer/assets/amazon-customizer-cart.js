@@ -12,7 +12,7 @@
   const CART_ROOT_SELECTOR = 'form[action*="/cart"], .cart-items, [data-cart-items], .cart-drawer, .ajaxcart, .cart-popup';
   const JSON_HEADERS = { accept: "application/json" };
   const JSON_POST_HEADERS = { "content-type": "application/json", accept: "application/json" };
-  const ZERO_DECIMAL_CURRENCIES = ["BIF", "CLP", "DJF", "GNF", "JPY", "KMF", "KRW", "MGA", "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF"];
+  const ZERO_DECIMAL_CURRENCIES = ["BIF", "CLP", "DJF", "GNF", "JPY", "KMF", "KRW", "MGA", "PYG", "RWF", "UGX", "VUV", "XAF", "XOF", "XPF"];
   const PRICE_SELECTORS = [
     ".cart-item__price",
     ".price",
@@ -148,7 +148,7 @@
       const className = element.className || "";
       if (typeof className === "string" && /price|total|money|amount/i.test(className)) elements.add(element);
       const text = element.textContent || "";
-      if (/[$\u20AB\u00A3\u20AC\u00A5]|\bVND\b|\bUSD\b/i.test(text) && element.children.length <= 3 && text.length < 30) {
+      if (/[$\u00A3\u20AC\u00A5]|\bUSD\b/i.test(text) && element.children.length <= 3 && text.length < 30) {
         elements.add(element);
       }
     });

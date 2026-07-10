@@ -17,4 +17,4 @@ Custom Shopify app that converts Amazon `gc:app-config` JSON into a product meta
 - `npm run cleanup`: list customer assets older than 30 days.
 - `npm run cleanup:apply`: permanently delete those assets.
 
-The sync endpoint only writes when the request contains `apply: true`. Shopify JSON metafields are checked against the 128KB limit before every write.
+The sync endpoint only writes when the request contains `apply: true`. Shopify JSON metafields are checked against the 128KB limit before every write. Each synced product now gets its own app-managed surcharge add-on product so fee variants do not overwrite other customized products.

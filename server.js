@@ -183,7 +183,7 @@ async function handleShopifySync(req, res) {
     const cartTransform = await admin.ensureCartTransform(apply);
     const assetResult = await syncConfigAssets(admin, config, apply);
     config = assetResult.config;
-    const surcharge = await admin.ensureSurchargeProduct(config.pricing.amounts, apply);
+    const surcharge = await admin.ensureSurchargeProduct(product.id, config.pricing.amounts, apply);
     config.pricing.currencyCode = "USD";
     config.pricing.surchargeProductId = surcharge.productId || null;
     config.pricing.variantIds = surcharge.variants || {};

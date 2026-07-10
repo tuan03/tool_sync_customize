@@ -7,7 +7,7 @@ Custom Shopify app that converts Amazon `gc:app-config` JSON into a product meta
 1. Copy `.env.shopify.example` to `.env.shopify` and fill Shopify credentials plus two random secrets.
 2. Run `npm start`, then open `http://localhost:3000/admin.html`.
 3. Paste a Product ID and raw Amazon JSON, run **Convert**, then **Dry-run Sync** before applying.
-   If Amazon fees are decimal/USD-like values while the shop currency is VND, enter an explicit conversion multiplier; Sync refuses ambiguous fractional VND fees.
+   If Amazon fees need currency conversion before they are written to Shopify, enter an explicit price multiplier.
 4. Link/deploy the Shopify app with Shopify CLI, add the **Amazon customizer** app block to the product template, and configure its upload endpoint/token.
 
 ## Commands

@@ -57,7 +57,9 @@
     }
     return { options, fonts, colors, texts: {}, images: {}, imageTransforms: {}, textTransforms: {}, placementOffsets: {}, visible: {}, errors: {}, activeEdit: "", expandedOptionGroups: {}, promotedOptionIds: {} };
   }
-  function formatMoney(value) { return `${Number(value || 0).toLocaleString()} VND`; }
+  function formatMoney(value) {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(value || 0));
+  }
   function cssFontFamily(family) {
     return `"${String(family || "").replace(/"/g, '\\"')}", Arial, Helvetica, sans-serif`;
   }
@@ -459,10 +461,39 @@
   function isBackgroundOptionGroup(group) {
     return /background\s*color/i.test(`${group.label || ""} ${group.instructions || ""}`);
   }
+  function normalizeAssetUrl(url) {
+    if (!url) return "";
+    try {
+      const parsed = new URL(url, window.location.href);
+      parsed.hash = "";
+      parsed.search = "";
+      return parsed.toString();
+    } catch {
+      return String(url).split("#")[0].split("?")[0];
+    }
+  }
+  function isMockupOverlayGroup(instance, group, surface) {
+    const options = Array.isArray(group?.options) ? group.options : [];
+    if (!surface?.baseImage?.url || !options.length) return false;
+    if (options.some((option) => !option?.overlayImage?.url)) return false;
+    const baseUrl = normalizeAssetUrl(surface.baseImage.url);
+    return options.some((option) => normalizeAssetUrl(option.overlayImage.url) === baseUrl);
+  }
+  function previewBaseUrl(instance, surface) {
+    const fallback = surface?.baseImage?.url || instance.config.product.productImageUrl;
+    for (const group of instance.config.optionGroups || []) {
+      if (!visible(instance, group) || !isMockupOverlayGroup(instance, group, surface)) continue;
+      const overlay = selected(group, instance.state)?.overlayImage?.url;
+      if (overlay) return overlay;
+    }
+    return fallback;
+  }
   function renderOptionOverlays(instance, shouldRender, className) {
     const stage = q(instance.modal, ".amzcustom-stage");
+    const surface = (instance.config.surfaces || [])[0];
     for (const group of instance.config.optionGroups || []) {
       if (!visible(instance, group) || !shouldRender(group)) continue;
+      if (isMockupOverlayGroup(instance, group, surface)) continue;
       const overlay = selected(group, instance.state)?.overlayImage?.url;
       if (overlay) stage.insertAdjacentHTML("beforeend", `<img class="${escapeHtml(className || "amzcustom-stage-overlay")}" alt="" src="${escapeHtml(asset(overlay))}">`);
     }
@@ -473,7 +504,7 @@
     stage.innerHTML = "";
     const config = instance.config, state = instance.state;
     const surface = (config.surfaces || [])[0];
-    const base = surface?.baseImage?.url || config.product.productImageUrl;
+    const base = previewBaseUrl(instance, surface);
     if (base) stage.insertAdjacentHTML("beforeend", `<img class="amzcustom-stage-base" alt="" src="${escapeHtml(asset(base))}">`);
     renderOptionOverlays(instance, isBackgroundOptionGroup, "amzcustom-stage-background");
     for (const input of config.imageInputs || []) {
@@ -508,7 +539,7 @@
     if (surface?.maskImage?.url) stage.insertAdjacentHTML("beforeend", `<img class="amzcustom-stage-mask" alt="" src="${escapeHtml(asset(surface.maskImage.url))}">`);
     bindPreviewDrag(instance);
     syncEditBoxes(stage);
-    q(instance.modal, ".amzcustom-price").textContent = `Phụ phí: ${surcharge(instance).toLocaleString()} VND`;
+    q(instance.modal, ".amzcustom-price").textContent = `Surcharge: ${formatMoney(surcharge(instance))}`;
   }
   function bindPreviewDrag(instance) {
     const stage=q(instance.modal,".amzcustom-stage");
@@ -964,23 +995,49 @@
       setTimeout(()=>URL.revokeObjectURL(objectUrl),0);
     }
   }
+  function rectToCanvas(stageRect, targetRect, size) {
+    return {
+      x: (targetRect.left - stageRect.left) / stageRect.width * size,
+      y: (targetRect.top - stageRect.top) / stageRect.height * size,
+      width: targetRect.width / stageRect.width * size,
+      height: targetRect.height / stageRect.height * size,
+    };
+  }
   async function previewDataUrl(instance) {
     const stage=q(instance.modal,".amzcustom-stage"), rect=stage.getBoundingClientRect(), size=1000;
     const canvas=document.createElement("canvas"); canvas.width=canvas.height=size; const context=canvas.getContext("2d"); context.fillStyle="#fff"; context.fillRect(0,0,size,size);
     for (const child of stage.children) {
-      const childRect=child.getBoundingClientRect(), x=(childRect.left-rect.left)/rect.width*size, y=(childRect.top-rect.top)/rect.height*size, width=childRect.width/rect.width*size, height=childRect.height/rect.height*size;
+      const childRect=child.getBoundingClientRect(), childCanvasRect=rectToCanvas(rect, childRect, size);
       if (child.tagName === "IMG") {
         const image=await loadCanvasImage(child.src);
-        context.drawImage(image,x,y,width,height);
+        context.drawImage(image,childCanvasRect.x,childCanvasRect.y,childCanvasRect.width,childCanvasRect.height);
         continue;
       }
       const inner=child.querySelector("img");
       if (inner) {
         const image=await loadCanvasImage(inner.src);
-        const transform=(child.querySelector(".amzcustom-transform-box") || inner).style.transform.match(/translate\(([-\d.]+)%.*,([-\d.]+)%\).*scale\(([^)]+)\).*rotate\(([-\d.]+)deg\)/); const tx=Number(transform?.[1]||0)/100*width, ty=Number(transform?.[2]||0)/100*height, scale=Number(transform?.[3]||1), rotation=Number(transform?.[4]||0)*Math.PI/180; context.save(); context.beginPath(); context.rect(x,y,width,height); context.clip(); context.translate(x+width/2+tx,y+height/2+ty); context.rotate(rotation); context.drawImage(image,-width*scale/2,-height*scale/2,width*scale,height*scale); context.restore();
+        const clipRect = rectToCanvas(rect, (child.querySelector(".amzcustom-clip") || child).getBoundingClientRect(), size);
+        const imageRect = rectToCanvas(rect, inner.getBoundingClientRect(), size);
+        context.save();
+        context.beginPath();
+        context.rect(clipRect.x, clipRect.y, clipRect.width, clipRect.height);
+        context.clip();
+        context.drawImage(image, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
+        context.restore();
       }
       else {
-        const textNode=child.querySelector("span") || child; const style=getComputedStyle(child); const textRect=textNode.getBoundingClientRect(); const tx=(textRect.left-childRect.left)/rect.width*size, ty=(textRect.top-childRect.top)/rect.height*size; context.fillStyle=style.color; context.font=`${Math.max(12,parseFloat(style.fontSize)/rect.width*size)}px ${style.fontFamily}`; context.textAlign="center"; context.textBaseline="middle"; const lines=textNode.textContent.split(/\r?\n/); lines.forEach((line,index)=>context.fillText(line,x+tx+width/2,y+ty+height/2+(index-(lines.length-1)/2)*32,width));
+        const textNode=child.querySelector("span") || child;
+        const textBox=child.querySelector(".amzcustom-transform-box") || child;
+        const style=getComputedStyle(child);
+        const textRect=rectToCanvas(rect, textBox.getBoundingClientRect(), size);
+        context.save();
+        context.fillStyle=style.color;
+        context.font=`${Math.max(12,parseFloat(style.fontSize)/rect.width*size)}px ${style.fontFamily}`;
+        context.textAlign="center";
+        context.textBaseline="middle";
+        const lines=textNode.textContent.split(/\r?\n/);
+        lines.forEach((line,index)=>context.fillText(line,textRect.x+textRect.width/2,textRect.y+textRect.height/2+(index-(lines.length-1)/2)*32,textRect.width));
+        context.restore();
       }
     }
     const dataUrl = canvas.toDataURL("image/png",.92);
@@ -1019,7 +1076,7 @@
       const items = [{ id:Number(instance.root.dataset.variantId), quantity:1, properties }];
       
       const feeCounts={}; for(const group of instance.config.optionGroups){const option=selected(group,instance.state);if(option?.cost>0)feeCounts[option.cost]=(feeCounts[option.cost]||0)+1;}
-      for(const [amount,quantity] of Object.entries(feeCounts)){const gid=instance.config.pricing.variantIds?.[amount];if(!gid)throw new Error(`Thiếu add-on variant cho phụ phí ${amount} VND. Hãy Sync lại product.`);items.push({id:Number(String(gid).split("/").pop()),parent_id:Number(instance.root.dataset.variantId),quantity,properties:{"_customization_id":customizationId,"_customization_parent_variant":instance.root.dataset.variantId,"_customization_fee_component":amount}});}
+      for(const [amount,quantity] of Object.entries(feeCounts)){const gid=instance.config.pricing.variantIds?.[amount];if(!gid)throw new Error(`Missing add-on variant for surcharge ${formatMoney(amount)}. Please sync the product again.`);items.push({id:Number(String(gid).split("/").pop()),parent_id:Number(instance.root.dataset.variantId),quantity,properties:{"_customization_id":customizationId,"_customization_parent_variant":instance.root.dataset.variantId,"_customization_fee_component":amount}});}
       
       const addResponse = await fetch(`${window.Shopify.routes.root}cart/add.js`, { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({items}) });
       
@@ -1027,7 +1084,7 @@
         const errorJson = await addResponse.json();
         throw new Error(errorJson.description || "Không thể thêm vào giỏ hàng.");
       }
-      
+
       window.location.href = `${window.Shopify.routes.root}cart`;
     } catch (error) {
       alert(error.message);

@@ -54,7 +54,8 @@
   }
 
   function formatMoney(value) {
-    return `${value >= 0 ? "+" : "-"}${Math.abs(value).toFixed(2)}`;
+    const amount = Number(value || 0);
+    return `${amount >= 0 ? "+" : "-"}${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Math.abs(amount))}`;
   }
 
   function placementById(id) {

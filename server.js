@@ -978,23 +978,6 @@ function tryLoadConfigFromLocalHar(rawUrl) {
   return normalized;
 }
 
-function tryLoadRawConfigFromLocalHar(rawUrl) {
-  const target = paramsFromCustomFormUrl(rawUrl);
-  const configs = localHarConfigs();
-  const scored = configs
-    .map((item) => ({ ...item, score: matchCacheScore(target, item.appConfig) }))
-    .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score);
-  const best = scored[0];
-  if (!best) return null;
-  return {
-    config: best.appConfig,
-    matchedUrl: best.url,
-    file: best.file,
-    score: best.score,
-  };
-}
-
 async function handleCustomForm(req, res) {
   let url = "";
   try {
@@ -1016,45 +999,6 @@ async function handleCustomForm(req, res) {
       detail:
         "Amazon often returns a shell/error page to server-side crawlers without a valid browser session. Set AMAZON_COOKIE or keep a matching .har file in this folder as a fallback.",
       cachedConfigs: localHarConfigs().map((item) => item.summary),
-    });
-  }
-}
-
-async function handleAmazonAppConfig(req, res) {
-  let url = "";
-  try {
-    const body = await readRequestBody(req);
-    const payload = body ? JSON.parse(body) : {};
-    url = validateCustomFormUrl(payload.url || "");
-    const source = await fetchHtml(url);
-    const config = extractAppConfig(source.html, source);
-    jsonResponse(res, 200, {
-      ok: true,
-      sourceUrl: source.url || url,
-      config,
-    });
-  } catch (error) {
-    const cached = url ? tryLoadRawConfigFromLocalHar(url) : null;
-    if (cached) {
-      jsonResponse(res, 200, {
-        ok: true,
-        sourceUrl: cached.matchedUrl || url,
-        config: cached.config,
-        loadedFrom: {
-          type: "local-har-cache",
-          file: cached.file,
-          score: cached.score,
-        },
-        warning: error.message,
-      });
-      return;
-    }
-
-    jsonResponse(res, 400, {
-      ok: false,
-      error: error.message,
-      detail:
-        "Amazon customization forms may omit gc:app-config when the request has no valid proxy/browser session. Make sure proxy is enabled for this process and set AMAZON_COOKIE if Amazon still returns a shell page.",
     });
   }
 }
@@ -1152,11 +1096,6 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && requestUrl.pathname === "/api/amazon/product-info-link") {
     handleAmazonProductInfoLink(req, res);
-    return;
-  }
-
-  if (req.method === "POST" && requestUrl.pathname === "/api/amazon/app-config") {
-    handleAmazonAppConfig(req, res);
     return;
   }
 

@@ -1,6 +1,11 @@
 (function () {
-  const elements = Object.fromEntries(["product-id", "admin-secret", "price-multiplier", "raw-json", "convert", "dry-run", "sync", "status", "summary", "normalized-json", "byte-count", "proxy-panel", "proxy-state", "proxy-url", "proxy-location", "proxy-shop", "amazon-product-url", "fetch-amazon-link", "fetch-amazon-json", "copy-amazon-link", "amazon-customization-url", "amazon-link-status"].map((id) => [id, document.getElementById(id)]));
+  const elements = Object.fromEntries(["product-id", "admin-secret", "price-multiplier", "raw-json", "convert", "dry-run", "sync", "status", "summary", "normalized-json", "byte-count", "proxy-panel", "proxy-state", "proxy-url", "proxy-location", "proxy-shop", "amazon-product-url", "fetch-amazon-link", "open-amazon-link", "copy-console-code", "amazon-customization-url", "amazon-link-status"].map((id) => [id, document.getElementById(id)]));
   let normalizedConfig = null;
+  const AMAZON_CONFIG_CONSOLE_CODE = `const element = [...document.querySelectorAll('script[type="a-state"]')]
+  .find(item => item.outerHTML.includes('gc:app-config'));
+
+const amazonConfig = JSON.parse(element.textContent);
+copy(JSON.stringify(amazonConfig));`;
 
   function status(message, error = false) {
     elements.status.textContent = message;
@@ -38,8 +43,7 @@
       return;
     }
     elements["fetch-amazon-link"].disabled = true;
-    elements["copy-amazon-link"].disabled = true;
-    elements["fetch-amazon-json"].disabled = true;
+    elements["open-amazon-link"].disabled = true;
     amazonLinkStatus("Đang lấy link...");
     try {
       const response = await fetch("/api/amazon/product-info-link", {
@@ -54,49 +58,24 @@
         throw error;
       }
       elements["amazon-customization-url"].value = json.customizationUrl || "";
-      elements["copy-amazon-link"].disabled = !json.customizationUrl;
-      elements["fetch-amazon-json"].disabled = !json.customizationUrl;
+      elements["open-amazon-link"].disabled = !json.customizationUrl;
       amazonLinkStatus("Đã lấy được link.");
     } catch (error) {
       elements["amazon-customization-url"].value = "";
-      elements["fetch-amazon-json"].disabled = true;
       amazonLinkStatus(error.message, true);
     } finally {
       elements["fetch-amazon-link"].disabled = false;
     }
   }
-  async function fetchAmazonRawJson() {
-    const url = elements["amazon-customization-url"].value.trim();
-    if (!url) {
-      amazonLinkStatus("Chưa có customization URL.", true);
-      return;
-    }
-    elements["fetch-amazon-json"].disabled = true;
-    amazonLinkStatus("Đang lấy raw JSON...");
-    try {
-      const response = await fetch("/api/amazon/app-config", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      const json = await response.json();
-      if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
-      elements["raw-json"].value = JSON.stringify(json.config);
-      normalizedConfig = null;
-      elements["dry-run"].disabled = true;
-      elements.sync.disabled = true;
-      amazonLinkStatus(json.loadedFrom ? `Đã điền Raw Amazon JSON từ ${json.loadedFrom.file}.` : "Đã điền Raw Amazon JSON.");
-    } catch (error) {
-      amazonLinkStatus(error.message, true);
-    } finally {
-      elements["fetch-amazon-json"].disabled = false;
-    }
-  }
-  async function copyAmazonCustomizationLink() {
+  function openAmazonCustomizationLink() {
     const value = elements["amazon-customization-url"].value.trim();
     if (!value) return;
-    await navigator.clipboard.writeText(value);
-    amazonLinkStatus("Đã copy link.");
+    window.open(value, "_blank", "noopener,noreferrer");
+    amazonLinkStatus("Đã mở link.");
+  }
+  async function copyConsoleCode() {
+    await navigator.clipboard.writeText(AMAZON_CONFIG_CONSOLE_CODE);
+    amazonLinkStatus("Da copy console code.");
   }
   async function loadAdminStatus() {
     try {
@@ -138,8 +117,8 @@
     }
   }
   elements["fetch-amazon-link"].addEventListener("click", fetchAmazonCustomizationLink);
-  elements["fetch-amazon-json"].addEventListener("click", fetchAmazonRawJson);
-  elements["copy-amazon-link"].addEventListener("click", copyAmazonCustomizationLink);
+  elements["open-amazon-link"].addEventListener("click", openAmazonCustomizationLink);
+  elements["copy-console-code"].addEventListener("click", copyConsoleCode);
   elements.convert.addEventListener("click", async () => {
     try {
       status("Đang chuyển đổi…");

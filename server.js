@@ -223,6 +223,7 @@ function storefrontAuthorized(req, requestUrl) {
 }
 
 async function handleShopifyUpload(req, res, requestUrl) {
+  const startedAt = Date.now();
   try {
     if (!storefrontAuthorized(req, requestUrl)) throw new Error("Unauthorized upload request.");
     const body = JSON.parse(await readRequestBody(req) || "{}");
@@ -234,9 +235,12 @@ async function handleShopifyUpload(req, res, requestUrl) {
     const extension = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/json": "json" }[parsed.mimeType];
     const filename = `amzcustom-order-${timestamp}-${crypto.randomUUID()}.${extension}`;
     const admin = new ShopifyAdmin();
+    console.log("[Amazon Customizer][Server] Upload started", { filename, mimeType: parsed.mimeType, bytes: parsed.buffer.length });
     const file = await admin.uploadBuffer(parsed.buffer, { filename, mimeType: parsed.mimeType, alt: `Amazon customizer order asset ${timestamp}`, contentType: parsed.mimeType === "application/json" ? "FILE" : "IMAGE" }, true);
+    console.log("[Amazon Customizer][Server] Upload completed", { filename, mimeType: parsed.mimeType, bytes: parsed.buffer.length, elapsedMs: Date.now() - startedAt, fileId: file.id });
     jsonResponse(res, 200, { ok: true, file: { id: file.id, url: shopifyFileUrl(file), filename } });
   } catch (error) {
+    console.warn("[Amazon Customizer][Server] Upload failed", { elapsedMs: Date.now() - startedAt, error: error.message });
     jsonResponse(res, 400, { ok: false, error: error.message });
   }
 }

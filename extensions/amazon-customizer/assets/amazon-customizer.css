@@ -206,6 +206,8 @@
 .amzcustom-editor-container .tui-image-editor-help-menu.top > .tui-image-editor-item[tooltip-content="Reset"] { display: inline-block !important; }
 .amzcustom-foot { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 12px; border-top: 1px solid #ddd; background: #fff; }
 .amzcustom-price { min-width: 0; overflow-wrap: anywhere; }
+.amzcustom-price-summary { display: grid; gap: 2px; min-width: 0; }
+.amzcustom-total-price { min-width: 0; overflow-wrap: anywhere; color: #111; }
 .amzcustom-add { min-width: 148px; min-height: 46px; border: 1px solid #fcd200; border-radius: 999px; background: #ffd814; color: #111; font-weight: 800; cursor: pointer; }
 .amzcustom-error { color: #b42318; font-size: 13px; }
 body.amzcustom-locked { overflow: hidden; }

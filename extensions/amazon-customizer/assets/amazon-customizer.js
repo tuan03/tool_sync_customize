@@ -3,6 +3,7 @@
   const instances = new WeakMap();
   const loadedFonts = new Set();
   let imageEditorAssetsPromise = null;
+  const canvasImageCache = new Map();
   const COLLAPSED_OPTION_LIMIT = 10;
   const q = (root, selector) => root.querySelector(selector);
   const escapeHtml = (value) => String(value == null ? "" : value).replace(/[&<>"']/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
@@ -59,6 +60,22 @@
   }
   function formatMoney(value) {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(value || 0));
+  }
+  function basePrice(instance) {
+    const value = Number(instance?.root?.dataset?.basePrice || 0);
+    return Number.isFinite(value) ? value : 0;
+  }
+  function totalPrice(instance) {
+    return basePrice(instance) + surcharge(instance);
+  }
+  function nowMs() {
+    return performance.now();
+  }
+  function secondsSince(startedAt) {
+    return Number(((nowMs() - startedAt) / 1000).toFixed(2));
+  }
+  function stageLog(label, details = {}) {
+    console.log(`[Amazon Customizer] ${label}`, details);
   }
   function cssFontFamily(family) {
     return `"${String(family || "").replace(/"/g, '\\"')}", Arial, Helvetica, sans-serif`;
@@ -540,6 +557,7 @@
     bindPreviewDrag(instance);
     syncEditBoxes(stage);
     q(instance.modal, ".amzcustom-price").textContent = `Surcharge: ${formatMoney(surcharge(instance))}`;
+    q(instance.modal, ".amzcustom-total-price").textContent = `Total: ${formatMoney(totalPrice(instance))}`;
   }
   function bindPreviewDrag(instance) {
     const stage=q(instance.modal,".amzcustom-stage");
@@ -969,31 +987,51 @@
     for (const input of instance.config.imageInputs) if (visible(instance,input) && input.required && !instance.state.images[input.id]) errors[input.id] = "Bắt buộc tải ảnh.";
     instance.state.errors = errors; return !Object.keys(errors).length;
   }
-  async function upload(instance, dataUrl) {
+  async function upload(instance, dataUrl, label = "asset") {
     if (!instance.root.dataset.uploadUrl) throw new Error("Theme block chưa cấu hình upload URL.");
+    const startedAt = nowMs();
+    stageLog(`Upload started: ${label}`, {
+      mimeType: String(dataUrl || "").match(/^data:([^;,]+)/)?.[1] || "unknown",
+      bytesApprox: Math.round(String(dataUrl || "").length * 0.75)
+    });
     const response = await fetch(instance.root.dataset.uploadUrl, { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ dataUrl }) });
     const json = await response.json();
     if (!response.ok || !json.ok) throw new Error(json.error || "Upload thất bại");
+    stageLog(`Upload completed: ${label}`, {
+      elapsedSeconds: secondsSince(startedAt),
+      fileId: json.file?.id,
+      filename: json.file?.filename
+    });
     return json.file;
   }
   async function loadCanvasImage(url) {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Không tải được preview asset (${response.status}).`);
-    const objectUrl = URL.createObjectURL(await response.blob());
-    try {
-      return await new Promise((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => {
-          resolve(image);
-        };
-        image.onerror = (err) => {
-          reject(err);
-        };
-        image.src = objectUrl;
-      });
-    } finally {
-      setTimeout(()=>URL.revokeObjectURL(objectUrl),0);
+    const key = String(url || "");
+    if (!key) throw new Error("Không có URL preview asset.");
+    if (!canvasImageCache.has(key)) {
+      canvasImageCache.set(key, (async () => {
+        const response = await fetch(key);
+        if (!response.ok) throw new Error(`Không tải được preview asset (${response.status}).`);
+        const objectUrl = URL.createObjectURL(await response.blob());
+        try {
+          return await new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => {
+              resolve(image);
+            };
+            image.onerror = (err) => {
+              reject(err);
+            };
+            image.src = objectUrl;
+          });
+        } finally {
+          setTimeout(()=>URL.revokeObjectURL(objectUrl),0);
+        }
+      })().catch((error) => {
+        canvasImageCache.delete(key);
+        throw error;
+      }));
     }
+    return canvasImageCache.get(key);
   }
   function rectToCanvas(stageRect, targetRect, size) {
     return {
@@ -1003,8 +1041,57 @@
       height: targetRect.height / stageRect.height * size,
     };
   }
+  function toBase64Unicode(value) {
+    return btoa(unescape(encodeURIComponent(String(value || ""))));
+  }
+  function chunkString(value, size) {
+    const chunks = [];
+    for (let index = 0; index < value.length; index += size) chunks.push(value.slice(index, index + size));
+    return chunks;
+  }
+  function buildCustomizationPayload(instance, customizationId, uploadedImages, previewFile) {
+    return {
+      customizationId,
+      schemaVersion: instance.config.schemaVersion,
+      productId: instance.root.dataset.productId,
+      variantId: instance.root.dataset.variantId,
+      createdAt: new Date().toISOString(),
+      surcharge: surcharge(instance),
+      preview: previewFile,
+      selections: {
+        options: instance.state.options,
+        texts: instance.state.texts,
+        fonts: instance.state.fonts,
+        colors: instance.state.colors,
+        images: uploadedImages,
+        imageTransforms: instance.state.imageTransforms,
+        textTransforms: instance.state.textTransforms,
+        placementOffsets: instance.state.placementOffsets
+      }
+    };
+  }
+  function customizationProperties(instance, customizationId, previewFile, payload) {
+    const summary = Object.values(instance.state.texts).filter(Boolean).join(" | ").slice(0, 220) || "Customized product";
+    const payloadEncoded = toBase64Unicode(JSON.stringify(payload));
+    const payloadChunks = chunkString(payloadEncoded, 240);
+    const properties = {
+      Customization: summary,
+      "_customization_id": customizationId,
+      "_customization_preview": previewFile.url,
+      "_customization_fee": String(payload.surcharge),
+      "_customization_options": JSON.stringify(instance.state.options),
+      "_customization_schema": String(instance.config.schemaVersion),
+      "_customization_payload_encoding": "base64-json",
+      "_customization_payload_count": String(payloadChunks.length)
+    };
+    payloadChunks.forEach((chunk, index) => {
+      properties[`_customization_payload_${index + 1}`] = chunk;
+    });
+    return properties;
+  }
   async function previewDataUrl(instance) {
-    const stage=q(instance.modal,".amzcustom-stage"), rect=stage.getBoundingClientRect(), size=1000;
+    const startedAt = nowMs();
+    const stage=q(instance.modal,".amzcustom-stage"), rect=stage.getBoundingClientRect(), size=640;
     const canvas=document.createElement("canvas"); canvas.width=canvas.height=size; const context=canvas.getContext("2d"); context.fillStyle="#fff"; context.fillRect(0,0,size,size);
     for (const child of stage.children) {
       const childRect=child.getBoundingClientRect(), childCanvasRect=rectToCanvas(rect, childRect, size);
@@ -1040,31 +1127,65 @@
         context.restore();
       }
     }
-    const dataUrl = canvas.toDataURL("image/png",.92);
+    const dataUrl = canvas.toDataURL("image/jpeg", .82);
+    stageLog("Preview rendered", {
+      elapsedSeconds: secondsSince(startedAt),
+      size,
+      mimeType: "image/jpeg",
+      bytesApprox: Math.round(String(dataUrl || "").length * 0.75)
+    });
     return dataUrl;
   }
   async function finish(instance) {
     if (!validate(instance)) {
       return renderControls(instance);
     }
-    const add = q(instance.modal, ".amzcustom-add"); add.disabled = true; add.textContent = "Đang lưu…";
+    const add = q(instance.modal, ".amzcustom-add");
+    const startedAt = performance.now();
+    const startedAtIso = new Date().toISOString();
+    console.log("[Amazon Customizer] Add customized item started", {
+      variantId: instance.root.dataset.variantId,
+      productId: instance.root.dataset.productId,
+      startedAt: startedAtIso
+    });
+    add.disabled = true; add.textContent = "Saving...";
     try {
-      const uploadedImages = {};
-      for (const [id, value] of Object.entries(instance.state.images)) {
-        uploadedImages[id] = await upload(instance, value.dataUrl);
-      }
+      const imageEntries = Object.entries(instance.state.images);
+      stageLog("Add customized item context", {
+        variantId: instance.root.dataset.variantId,
+        imageCount: imageEntries.length,
+        surcharge: surcharge(instance),
+        basePrice: basePrice(instance),
+        totalPrice: totalPrice(instance)
+      });
+      const previewPromise = previewDataUrl(instance);
+      const uploadedImageEntries = await Promise.all(imageEntries.map(async ([id, value]) => {
+        const uploadStartedAt = nowMs();
+        const file = await upload(instance, value.dataUrl, `custom image:${id}`);
+        stageLog("Custom image ready", { id, elapsedSeconds: secondsSince(uploadStartedAt), fileId: file?.id });
+        return [id, file];
+      }));
+      const uploadedImages = Object.fromEntries(uploadedImageEntries);
       
-      const pDataUrl = await previewDataUrl(instance);
-      const previewFile=await upload(instance, pDataUrl);
+      stageLog("All custom images uploaded", {
+        elapsedSeconds: secondsSince(startedAt),
+        uploadedImageCount: uploadedImageEntries.length
+      });
+      const pDataUrl = await previewPromise;
+      const previewUploadStartedAt = nowMs();
+      const previewFile=await upload(instance, pDataUrl, "cart preview");
+      stageLog("Cart preview ready", {
+        elapsedSeconds: secondsSince(previewUploadStartedAt),
+        previewUrl: previewFile?.url
+      });
       
       const customizationId = crypto.randomUUID();
+      const payload = buildCustomizationPayload(instance, customizationId, uploadedImages, previewFile);
+      stageLog("Customization payload prepared", {
+        elapsedSeconds: secondsSince(startedAt),
+        payloadBytes: JSON.stringify(payload).length
+      });
       
-      const manifest = { customizationId, schemaVersion:instance.config.schemaVersion, productId:instance.root.dataset.productId, variantId:instance.root.dataset.variantId, preview:previewFile, selections:{ options:instance.state.options, texts:instance.state.texts, fonts:instance.state.fonts, colors:instance.state.colors, images:uploadedImages, imageTransforms:instance.state.imageTransforms, textTransforms:instance.state.textTransforms, placementOffsets:instance.state.placementOffsets }, surcharge:surcharge(instance), createdAt:new Date().toISOString() };
-      const manifestUrl = `data:application/json;base64,${btoa(unescape(encodeURIComponent(JSON.stringify(manifest))))}`;
-      
-      const manifestFile = await upload(instance, manifestUrl);
-      
-      const summary = Object.values(instance.state.texts).filter(Boolean).join(" | ").slice(0, 220) || "Customized product";
       try {
         localStorage.setItem("amzcustom_preview_" + instance.root.dataset.variantId, previewFile.url);
         const surchargeCents = Math.round(surcharge(instance) * 100);
@@ -1072,21 +1193,47 @@
       } catch (e) {
       }
       
-      const properties={ Customization:summary, "_customization_id":customizationId, "_customization_preview":previewFile.url, "_customization_manifest":manifestFile.url, "_customization_fee":String(manifest.surcharge), "_customization_options":JSON.stringify(instance.state.options), "_customization_schema":String(instance.config.schemaVersion) };
+      const properties = customizationProperties(instance, customizationId, previewFile, payload);
       const items = [{ id:Number(instance.root.dataset.variantId), quantity:1, properties }];
       
       const feeCounts={}; for(const group of instance.config.optionGroups){const option=selected(group,instance.state);if(option?.cost>0)feeCounts[option.cost]=(feeCounts[option.cost]||0)+1;}
       for(const [amount,quantity] of Object.entries(feeCounts)){const gid=instance.config.pricing.variantIds?.[amount];if(!gid)throw new Error(`Missing add-on variant for surcharge ${formatMoney(amount)}. Please sync the product again.`);items.push({id:Number(String(gid).split("/").pop()),parent_id:Number(instance.root.dataset.variantId),quantity,properties:{"_customization_id":customizationId,"_customization_parent_variant":instance.root.dataset.variantId,"_customization_fee_component":amount}});}
       
+      const cartAddStartedAt = nowMs();
       const addResponse = await fetch(`${window.Shopify.routes.root}cart/add.js`, { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({items}) });
       
       if (!addResponse.ok) {
         const errorJson = await addResponse.json();
         throw new Error(errorJson.description || "Không thể thêm vào giỏ hàng.");
       }
-
+      stageLog("Cart add completed", {
+        elapsedSeconds: secondsSince(cartAddStartedAt),
+        lineItemCount: items.length
+      });
+      const finishedAt = performance.now();
+      const elapsedSeconds = Number(((finishedAt - startedAt) / 1000).toFixed(2));
+      console.log("[Amazon Customizer] Add customized item completed", {
+        variantId: instance.root.dataset.variantId,
+        customizationId,
+        elapsedSeconds
+      });
+      try {
+        sessionStorage.setItem("amzcustom_last_add_timing", JSON.stringify({
+          startedAt: startedAtIso,
+          elapsedSeconds,
+          variantId: instance.root.dataset.variantId,
+          customizationId
+        }));
+      } catch (e) {
+      }
       window.location.href = `${window.Shopify.routes.root}cart`;
     } catch (error) {
+      const failedAt = performance.now();
+      console.warn("[Amazon Customizer] Add customized item failed", {
+        variantId: instance.root.dataset.variantId,
+        elapsedSeconds: Number(((failedAt - startedAt) / 1000).toFixed(2)),
+        error: error?.message || String(error)
+      });
       alert(error.message);
       add.disabled = false;
       add.textContent = "Add customized item";
@@ -1108,7 +1255,7 @@
     if (!config || instances.has(root)) return;
     for(const group of config.fontGroups||[])for(const font of group.options||[])ensureFontLoaded(font);
     const modal = document.createElement("div"); modal.className="amzcustom-modal"; modal.hidden=true;
-    modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><strong class="amzcustom-price"></strong><button class="amzcustom-add">Add customized item</button></footer></section>`;
+    modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><div class="amzcustom-price-summary"><strong class="amzcustom-price"></strong><strong class="amzcustom-total-price"></strong></div><button class="amzcustom-add">Add customized item</button></footer></section>`;
     document.body.appendChild(modal); const instance={root,modal,config,state:initialState(config)}; instances.set(root,instance);
     q(root,".amzcustom-open").addEventListener("click",()=>{ modal.hidden=false; document.body.classList.add("amzcustom-locked"); renderControls(instance); scheduleFontReadyRender(instance); });
     const close=()=>{modal.hidden=true;document.body.classList.remove("amzcustom-locked");}; q(modal,".amzcustom-close").addEventListener("click",close); q(modal,".amzcustom-backdrop").addEventListener("click",close); q(modal,".amzcustom-add").addEventListener("click",()=>finish(instance));

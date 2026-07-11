@@ -10,6 +10,7 @@
     data-amzcustom-root
     data-product-id="{{ customizer_product.id }}"
     data-variant-id="{{ customizer_product.selected_or_first_available_variant.id }}"
+    data-base-price="{{ customizer_product.selected_or_first_available_variant.price | divided_by: 100.0 }}"
     data-config="{{ customizer_metafield.value | json | escape }}"
     data-upload-url="{{ block.settings.upload_path | escape }}"
   >

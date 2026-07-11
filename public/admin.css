@@ -27,6 +27,10 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .status { margin: 0; min-height: 22px; color: #276240; }
 .status.error { color: #b42318; }
 .section-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.amazon-link-tool { display: grid; gap: 14px; }
+#amazon-link-status { color: #276240; font-size: 13px; font-weight: 700; text-align: right; }
+#amazon-link-status.error { color: #b42318; }
+.link-output { min-height: 92px; background: #f8faf8; resize: vertical; }
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 10px; }
 .metric { background: #f3f7f4; padding: 12px; border-radius: 8px; }
 .metric b { display: block; font-size: 20px; }

@@ -1,10 +1,14 @@
 (function () {
-  const elements = Object.fromEntries(["product-id", "admin-secret", "price-multiplier", "raw-json", "convert", "dry-run", "sync", "status", "summary", "normalized-json", "byte-count", "proxy-panel", "proxy-state", "proxy-url", "proxy-location", "proxy-shop"].map((id) => [id, document.getElementById(id)]));
+  const elements = Object.fromEntries(["product-id", "admin-secret", "price-multiplier", "raw-json", "convert", "dry-run", "sync", "status", "summary", "normalized-json", "byte-count", "proxy-panel", "proxy-state", "proxy-url", "proxy-location", "proxy-shop", "amazon-product-url", "fetch-amazon-link", "fetch-amazon-json", "copy-amazon-link", "amazon-customization-url", "amazon-link-status"].map((id) => [id, document.getElementById(id)]));
   let normalizedConfig = null;
 
   function status(message, error = false) {
     elements.status.textContent = message;
     elements.status.classList.toggle("error", error);
+  }
+  function amazonLinkStatus(message, error = false) {
+    elements["amazon-link-status"].textContent = message;
+    elements["amazon-link-status"].classList.toggle("error", error);
   }
   async function post(url, payload) {
     const secret = elements["admin-secret"].value;
@@ -26,6 +30,73 @@
       <div class="metric"><span>Phụ phí</span><b>${summary.surchargeAmounts.length}</b></div>
       <div class="metric"><span>Kích thước</span><b>${(summary.bytes / 1024).toFixed(1)} KB</b></div>
     </div>`;
+  }
+  async function fetchAmazonCustomizationLink() {
+    const url = elements["amazon-product-url"].value.trim();
+    if (!url) {
+      amazonLinkStatus("Nhập Amazon product URL trước.", true);
+      return;
+    }
+    elements["fetch-amazon-link"].disabled = true;
+    elements["copy-amazon-link"].disabled = true;
+    elements["fetch-amazon-json"].disabled = true;
+    amazonLinkStatus("Đang lấy link...");
+    try {
+      const response = await fetch("/api/amazon/product-info-link", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.ok) {
+        const error = new Error(json.error || `HTTP ${response.status}`);
+        error.response = json;
+        throw error;
+      }
+      elements["amazon-customization-url"].value = json.customizationUrl || "";
+      elements["copy-amazon-link"].disabled = !json.customizationUrl;
+      elements["fetch-amazon-json"].disabled = !json.customizationUrl;
+      amazonLinkStatus("Đã lấy được link.");
+    } catch (error) {
+      elements["amazon-customization-url"].value = "";
+      elements["fetch-amazon-json"].disabled = true;
+      amazonLinkStatus(error.message, true);
+    } finally {
+      elements["fetch-amazon-link"].disabled = false;
+    }
+  }
+  async function fetchAmazonRawJson() {
+    const url = elements["amazon-customization-url"].value.trim();
+    if (!url) {
+      amazonLinkStatus("Chưa có customization URL.", true);
+      return;
+    }
+    elements["fetch-amazon-json"].disabled = true;
+    amazonLinkStatus("Đang lấy raw JSON...");
+    try {
+      const response = await fetch("/api/amazon/app-config", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
+      elements["raw-json"].value = JSON.stringify(json.config);
+      normalizedConfig = null;
+      elements["dry-run"].disabled = true;
+      elements.sync.disabled = true;
+      amazonLinkStatus(json.loadedFrom ? `Đã điền Raw Amazon JSON từ ${json.loadedFrom.file}.` : "Đã điền Raw Amazon JSON.");
+    } catch (error) {
+      amazonLinkStatus(error.message, true);
+    } finally {
+      elements["fetch-amazon-json"].disabled = false;
+    }
+  }
+  async function copyAmazonCustomizationLink() {
+    const value = elements["amazon-customization-url"].value.trim();
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    amazonLinkStatus("Đã copy link.");
   }
   async function loadAdminStatus() {
     try {
@@ -66,6 +137,9 @@
       elements["proxy-shop"].textContent = "";
     }
   }
+  elements["fetch-amazon-link"].addEventListener("click", fetchAmazonCustomizationLink);
+  elements["fetch-amazon-json"].addEventListener("click", fetchAmazonRawJson);
+  elements["copy-amazon-link"].addEventListener("click", copyAmazonCustomizationLink);
   elements.convert.addEventListener("click", async () => {
     try {
       status("Đang chuyển đổi…");

@@ -24,6 +24,23 @@
           <span id="proxy-shop">-</span>
         </div>
       </section>
+      <section class="card amazon-link-tool">
+        <div class="section-title">
+          <h2>Amazon customization link</h2>
+          <span id="amazon-link-status"></span>
+        </div>
+        <label class="wide">Amazon product URL
+          <input id="amazon-product-url" placeholder="https://www.amazon.com/dp/...">
+        </label>
+        <div class="actions">
+          <button id="fetch-amazon-link" type="button">Fetch customization link</button>
+          <button id="fetch-amazon-json" type="button" disabled>Fetch raw JSON</button>
+          <button id="copy-amazon-link" type="button" disabled>Copy link</button>
+        </div>
+        <label class="wide">Customization URL
+          <textarea id="amazon-customization-url" class="link-output" readonly spellcheck="false"></textarea>
+        </label>
+      </section>
       <section class="card form-grid">
         <label>Shopify Product ID
           <input id="product-id" placeholder="11053922189479 hoặc gid://shopify/Product/…">

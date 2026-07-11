@@ -289,6 +289,23 @@ function validateCustomFormUrl(rawUrl) {
   return parsed.toString();
 }
 
+function validateAmazonProductUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error("Invalid Amazon product URL");
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  const isAmazonHost = hostname === "amazon.com" || hostname === "www.amazon.com" || hostname.endsWith(".amazon.com");
+  if (!isAmazonHost) {
+    throw new Error("Only amazon.com product URLs are allowed");
+  }
+
+  return parsed.toString();
+}
+
 function validateAssetUrl(rawUrl) {
   let parsed;
   try {
@@ -315,7 +332,14 @@ async function fetchHtml(url) {
   const headers = { ...DEFAULT_HEADERS };
   if (AMAZON_COOKIE) headers.cookie = AMAZON_COOKIE;
 
-  const response = await fetch(url, { redirect: "follow", headers });
+  let response;
+  try {
+    response = await fetch(url, { redirect: "follow", headers });
+  } catch (error) {
+    const cause = error && error.cause;
+    throw new Error(`Amazon fetch failed: ${error.code || cause && cause.code || error.message}`);
+  }
+
   const html = await response.text();
 
   if (!response.ok) {
@@ -359,6 +383,67 @@ function extractAppConfig(html, sourceInfo = {}) {
     .filter(Boolean)
     .join("; ");
   throw new Error(details);
+}
+
+function extractProductInfo(html, sourceInfo = {}) {
+  const scripts =
+    html.match(/<script\b[^>]*type=["']a-state["'][^>]*>[\s\S]*?<\/script>/gi) || [];
+
+  for (const script of scripts) {
+    if (!script.includes("gc:productInfo")) continue;
+
+    const bodyMatch = script.match(/>([\s\S]*?)<\/script>/i);
+    if (!bodyMatch) continue;
+
+    const productInfo = JSON.parse(decodeHtmlEntities(bodyMatch[1].trim()));
+    if (!productInfo.customizationFormLink) {
+      throw new Error("Amazon gc:productInfo was found, but customizationFormLink is missing.");
+    }
+    return productInfo;
+  }
+
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const titleText = title ? decodeHtmlEntities(title[1].replace(/\s+/g, " ").trim()) : "unknown";
+  const details = [
+    "Amazon gc:productInfo state not found in product HTML",
+    sourceInfo.status ? `status=${sourceInfo.status}` : null,
+    sourceInfo.url ? `url=${sourceInfo.url}` : null,
+    `title=${titleText}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
+  throw new Error(details);
+}
+
+function amazonCustomizationUrl(productInfo) {
+  const link = String(productInfo && productInfo.customizationFormLink || "");
+  if (!link) throw new Error("customizationFormLink is missing.");
+  return new URL(link, "https://www.amazon.com").toString();
+}
+
+function extractCustomizationFormLink(html) {
+  const patterns = [
+    /https?:\\?\/\\?\/(?:www\.)?amazon\.com\\?\/customization\\?\/form\?[^"'\\\s<>]+/i,
+    /\/customization\/form\?[^"'\\\s<>]+/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = String(html || "").match(pattern);
+    if (!match) continue;
+
+    let link = decodeHtmlEntities(match[0])
+      .replace(/\\\//g, "/")
+      .replace(/\\u0026/g, "&")
+      .replace(/&amp;/g, "&");
+
+    try {
+      link = decodeURIComponent(link);
+    } catch {}
+
+    return new URL(link, "https://www.amazon.com").toString();
+  }
+
+  return "";
 }
 
 function normalizeImage(image) {
@@ -853,6 +938,23 @@ function tryLoadConfigFromLocalHar(rawUrl) {
   return normalized;
 }
 
+function tryLoadRawConfigFromLocalHar(rawUrl) {
+  const target = paramsFromCustomFormUrl(rawUrl);
+  const configs = localHarConfigs();
+  const scored = configs
+    .map((item) => ({ ...item, score: matchCacheScore(target, item.appConfig) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  if (!best) return null;
+  return {
+    config: best.appConfig,
+    matchedUrl: best.url,
+    file: best.file,
+    score: best.score,
+  };
+}
+
 async function handleCustomForm(req, res) {
   let url = "";
   try {
@@ -874,6 +976,76 @@ async function handleCustomForm(req, res) {
       detail:
         "Amazon often returns a shell/error page to server-side crawlers without a valid browser session. Set AMAZON_COOKIE or keep a matching .har file in this folder as a fallback.",
       cachedConfigs: localHarConfigs().map((item) => item.summary),
+    });
+  }
+}
+
+async function handleAmazonAppConfig(req, res) {
+  let url = "";
+  try {
+    const body = await readRequestBody(req);
+    const payload = body ? JSON.parse(body) : {};
+    url = validateCustomFormUrl(payload.url || "");
+    const source = await fetchHtml(url);
+    const config = extractAppConfig(source.html, source);
+    jsonResponse(res, 200, {
+      ok: true,
+      sourceUrl: source.url || url,
+      config,
+    });
+  } catch (error) {
+    const cached = url ? tryLoadRawConfigFromLocalHar(url) : null;
+    if (cached) {
+      jsonResponse(res, 200, {
+        ok: true,
+        sourceUrl: cached.matchedUrl || url,
+        config: cached.config,
+        loadedFrom: {
+          type: "local-har-cache",
+          file: cached.file,
+          score: cached.score,
+        },
+        warning: error.message,
+      });
+      return;
+    }
+
+    jsonResponse(res, 400, {
+      ok: false,
+      error: error.message,
+      detail:
+        "Amazon customization forms may omit gc:app-config when the request has no valid proxy/browser session. Make sure proxy is enabled for this process and set AMAZON_COOKIE if Amazon still returns a shell page.",
+    });
+  }
+}
+
+async function handleAmazonProductInfoLink(req, res) {
+  try {
+    const body = await readRequestBody(req);
+    const payload = body ? JSON.parse(body) : {};
+    const url = validateAmazonProductUrl(payload.url || "");
+    const source = await fetchHtml(url);
+    let productInfo = null;
+    let customizationUrl = "";
+    try {
+      productInfo = extractProductInfo(source.html, source);
+      customizationUrl = amazonCustomizationUrl(productInfo);
+    } catch (extractError) {
+      customizationUrl = extractCustomizationFormLink(source.html);
+      if (!customizationUrl) throw extractError;
+    }
+    jsonResponse(res, 200, {
+      ok: true,
+      sourceUrl: source.url || url,
+      customizationUrl,
+      productInfo,
+    });
+  } catch (error) {
+    jsonResponse(res, 400, {
+      ok: false,
+      error: error.message,
+      detail:
+        "Amazon product pages may omit gc:productInfo when the request has no US delivery/browser session. Enable the shop proxy for this process and, if needed, set AMAZON_COOKIE from a browser session that can open the product page.",
     });
   }
 }
@@ -935,6 +1107,16 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && requestUrl.pathname === "/api/custom-form") {
     handleCustomForm(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/api/amazon/product-info-link") {
+    handleAmazonProductInfoLink(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/api/amazon/app-config") {
+    handleAmazonAppConfig(req, res);
     return;
   }
 

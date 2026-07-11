@@ -227,14 +227,54 @@ async function handleShopifyUpload(req, res, requestUrl) {
   try {
     if (!storefrontAuthorized(req, requestUrl)) throw new Error("Unauthorized upload request.");
     const body = JSON.parse(await readRequestBody(req) || "{}");
+    const admin = new ShopifyAdmin();
+    const allowed = new Set(["image/png", "image/jpeg", "image/webp", "application/json"]);
+    if (body.action === "prepare") {
+      const mimeType = String(body.mimeType || "");
+      const fileSize = Number(body.fileSize || 0);
+      if (!allowed.has(mimeType)) throw new Error(`Unsupported MIME type: ${mimeType}`);
+      if (!Number.isFinite(fileSize) || fileSize <= 0) throw new Error("Missing file size.");
+      if (fileSize > 10 * 1024 * 1024) throw new Error("File exceeds the 10MB upload limit.");
+      const timestamp = Date.now();
+      const extension = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/json": "json" }[mimeType];
+      const filename = `amzcustom-order-${timestamp}-${crypto.randomUUID()}.${extension}`;
+      console.log("[Amazon Customizer][Server] Upload prepare", { filename, mimeType, bytes: fileSize });
+      const target = await admin.createStagedUploadTarget({ filename, mimeType, fileSize, contentType: mimeType === "application/json" ? "FILE" : "IMAGE" });
+      jsonResponse(res, 200, {
+        ok: true,
+        upload: {
+          filename,
+          mimeType,
+          contentType: mimeType === "application/json" ? "FILE" : "IMAGE",
+          url: target.url,
+          resourceUrl: target.resourceUrl,
+          parameters: target.parameters,
+        }
+      });
+      return;
+    }
+    if (body.action === "complete") {
+      const mimeType = String(body.mimeType || "");
+      const filename = String(body.filename || "");
+      const resourceUrl = String(body.resourceUrl || "");
+      if (!allowed.has(mimeType)) throw new Error(`Unsupported MIME type: ${mimeType}`);
+      if (!filename || !resourceUrl) throw new Error("Missing upload completion data.");
+      console.log("[Amazon Customizer][Server] Upload complete start", { filename, mimeType });
+      const file = await admin.completeStagedUpload(resourceUrl, {
+        filename,
+        alt: `Amazon customizer order asset ${Date.now()}`,
+        contentType: mimeType === "application/json" ? "FILE" : "IMAGE"
+      }, true);
+      console.log("[Amazon Customizer][Server] Upload completed", { filename, mimeType, elapsedMs: Date.now() - startedAt, fileId: file.id });
+      jsonResponse(res, 200, { ok: true, file: { id: file.id, url: shopifyFileUrl(file), filename } });
+      return;
+    }
     const parsed = parseDataUrl(body.dataUrl);
     if (parsed.buffer.length > 10 * 1024 * 1024) throw new Error("File exceeds the 10MB upload limit.");
-    const allowed = new Set(["image/png", "image/jpeg", "image/webp", "application/json"]);
     if (!allowed.has(parsed.mimeType)) throw new Error(`Unsupported MIME type: ${parsed.mimeType}`);
     const timestamp = Date.now();
     const extension = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/json": "json" }[parsed.mimeType];
     const filename = `amzcustom-order-${timestamp}-${crypto.randomUUID()}.${extension}`;
-    const admin = new ShopifyAdmin();
     console.log("[Amazon Customizer][Server] Upload started", { filename, mimeType: parsed.mimeType, bytes: parsed.buffer.length });
     const file = await admin.uploadBuffer(parsed.buffer, { filename, mimeType: parsed.mimeType, alt: `Amazon customizer order asset ${timestamp}`, contentType: parsed.mimeType === "application/json" ? "FILE" : "IMAGE" }, true);
     console.log("[Amazon Customizer][Server] Upload completed", { filename, mimeType: parsed.mimeType, bytes: parsed.buffer.length, elapsedMs: Date.now() - startedAt, fileId: file.id });

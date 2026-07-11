@@ -706,6 +706,13 @@
   function uploadButtonHtml() {
     return `<button type="button" class="amzcustom-upload-button" data-image-action="replace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8 12 3 7 8"/><path d="M12 3v12"/></svg><span>Upload</span></button>`;
   }
+  function imageUploadStatusHtml(image) {
+    const status = image?.uploadStatus || "";
+    if (status === "uploading") return '<div class="amzcustom-meta"><span>Uploading image...</span></div>';
+    if (status === "uploaded") return '<div class="amzcustom-meta"><span>Image uploaded</span></div>';
+    if (status === "failed") return `<div class="amzcustom-meta"><span>${escapeHtml(image.uploadError || "Upload failed. We will retry when you add to cart.")}</span></div>`;
+    return "";
+  }
   function optionChoicesHtml(state, item) {
     item.options = Array.isArray(item.options) ? item.options : [];
     const isMobile = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
@@ -741,7 +748,7 @@
       const value = state.texts[item.id] || "";
       return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}${item.maxLines > 1 ? `<textarea maxlength="${item.maxLength || ""}" rows="${Math.min(item.maxLines || 3, 5)}">${escapeHtml(value)}</textarea>` : `<input type="text" maxlength="${item.maxLength || ""}" value="${escapeHtml(value)}" placeholder="${escapeHtml(item.placeholder || "")}">`}<div class="amzcustom-meta"><span>${value.length}${item.maxLength ? `/${item.maxLength}` : ""}</span></div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
-    if (type === "image") { const active = state.activeEdit === `image:${item.id}`; return `<section class="amzcustom-control ${active ? "is-editing" : ""}" data-id="${item.id}">${controlHeader(item)}<input class="amzcustom-file is-hidden" type="file" accept="image/png,image/jpeg,image/webp">${state.images[item.id] ? `<div class="amzcustom-upload-row"><img src="${escapeHtml(state.images[item.id].dataUrl)}" alt=""><div class="amzcustom-actions">${imageActionButton(active ? "done" : "edit", active ? "Done" : "Edit", active ? "done" : "edit")}${imageActionButton("replace", "Replace", "replace")}${imageActionButton("delete", "Delete", "delete")}</div></div>` : uploadButtonHtml()}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`; }
+    if (type === "image") { const active = state.activeEdit === `image:${item.id}`; return `<section class="amzcustom-control ${active ? "is-editing" : ""}" data-id="${item.id}">${controlHeader(item)}<input class="amzcustom-file is-hidden" type="file" accept="image/png,image/jpeg,image/webp">${state.images[item.id] ? `<div class="amzcustom-upload-row"><img src="${escapeHtml(state.images[item.id].dataUrl)}" alt=""><div class="amzcustom-actions">${imageActionButton(active ? "done" : "edit", active ? "Done" : "Edit", active ? "done" : "edit")}${imageActionButton("replace", "Replace", "replace")}${imageActionButton("delete", "Delete", "delete")}</div></div>${imageUploadStatusHtml(state.images[item.id])}` : uploadButtonHtml()}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`; }
     if (type === "font") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}${fontDropdownHtml(state, item)}</section>`;
     if (type === "color") { const options = Array.isArray(item.options) ? item.options : []; return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-swatches">${options.map((color) => `<button type="button" class="amzcustom-swatch ${state.colors[item.id] === color.id ? "is-selected" : ""}" data-color="${escapeHtml(color.id)}" style="--swatch:${escapeHtml(color.value || "#fff")}" title="${escapeHtml(color.name)}"><span>${escapeHtml(color.name)}</span></button>`).join("")}</div></section>`; }
     return "";
@@ -970,7 +977,19 @@
       const group = event.target.closest("[data-id]"); if (!group) return; const id = group.dataset.id;
       const textInput = instance.config.textInputs.find((x)=>x.id===id);
       if (event.target.matches('input[type="text"],textarea')) { instance.state.texts[id] = normalizeText(event.target.value, textInput || {}); event.target.value = instance.state.texts[id]; const meta=group.querySelector(".amzcustom-meta span"); if(meta) meta.textContent = `${instance.state.texts[id].length}${textInput?.maxLength ? `/${textInput.maxLength}` : ""}`; evaluate(instance); renderPreview(instance); return; }
-      if (event.target.matches('input[type="file"]') && event.target.files[0]) { instance.state.images[id] = await fileData(event.target.files[0]); instance.state.imageTransforms[id] = { x:0, y:0, scale:1, rotation:0 }; if (instance.state.activeEdit === `image:${id}`) instance.state.activeEdit = ""; }
+      if (event.target.matches('input[type="file"]') && event.target.files[0]) {
+        instance.state.images[id] = await fileData(event.target.files[0]);
+        instance.state.images[id].uploadStatus = "queued";
+        instance.state.images[id].uploadPromise = null;
+        instance.state.images[id].uploadedFile = null;
+        instance.state.images[id].uploadError = "";
+        instance.state.imageTransforms[id] = { x:0, y:0, scale:1, rotation:0 };
+        if (instance.state.activeEdit === `image:${id}`) instance.state.activeEdit = "";
+        evaluate(instance);
+        renderControls(instance);
+        startBackgroundUpload(instance, id).catch(() => renderControls(instance));
+        return;
+      }
       if (event.target.matches("select")) { if (instance.config.optionGroups.some((x)=>x.id===id)) instance.state.options[id] = event.target.value; else if (instance.config.fontGroups.some((x)=>x.id===id)) { instance.state.fonts[id] = event.target.value; const group = instance.config.fontGroups.find((x)=>x.id===id); ensureFontLoaded((Array.isArray(group?.options) ? group.options : []).find((item)=>item.id===event.target.value)); } else instance.state.colors[id] = event.target.value; }
       evaluate(instance); renderControls(instance);
     });
@@ -990,14 +1009,31 @@
     for (const input of instance.config.imageInputs) if (visible(instance,input) && input.required && !instance.state.images[input.id]) errors[input.id] = "Bắt buộc tải ảnh.";
     instance.state.errors = errors; return !Object.keys(errors).length;
   }
-  async function upload(instance, dataUrl, label = "asset") {
+  async function upload(instance, file, label = "asset") {
     if (!instance.root.dataset.uploadUrl) throw new Error("Theme block chưa cấu hình upload URL.");
     const startedAt = nowMs();
     stageLog(`Upload started: ${label}`, {
-      mimeType: String(dataUrl || "").match(/^data:([^;,]+)/)?.[1] || "unknown",
-      bytesApprox: Math.round(String(dataUrl || "").length * 0.75)
+      mimeType: file?.type || "unknown",
+      bytesApprox: Number(file?.size || 0)
     });
-    const response = await fetch(instance.root.dataset.uploadUrl, { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ dataUrl }) });
+    const prepareResponse = await fetch(instance.root.dataset.uploadUrl, {
+      method:"POST",
+      headers:{ "content-type":"application/json" },
+      body:JSON.stringify({ action: "prepare", mimeType: file?.type, fileSize: Number(file?.size || 0) })
+    });
+    const prepareJson = await prepareResponse.json();
+    if (!prepareResponse.ok || !prepareJson.ok) throw new Error(prepareJson.error || "Upload preparation failed");
+    const upload = prepareJson.upload || {};
+    const form = new FormData();
+    for (const parameter of upload.parameters || []) form.append(parameter.name, parameter.value);
+    form.append("file", file, upload.filename || file.name || "upload.bin");
+    const stagedResponse = await fetch(upload.url, { method: "POST", body: form });
+    if (!stagedResponse.ok) throw new Error(`Staged upload failed: HTTP ${stagedResponse.status}`);
+    const response = await fetch(instance.root.dataset.uploadUrl, {
+      method:"POST",
+      headers:{ "content-type":"application/json" },
+      body:JSON.stringify({ action: "complete", resourceUrl: upload.resourceUrl, filename: upload.filename, mimeType: upload.mimeType || file?.type })
+    });
     const json = await response.json();
     if (!response.ok || !json.ok) throw new Error(json.error || "Upload thất bại");
     stageLog(`Upload completed: ${label}`, {
@@ -1006,6 +1042,36 @@
       filename: json.file?.filename
     });
     return json.file;
+  }
+  async function startBackgroundUpload(instance, id) {
+    const image = instance.state.images[id];
+    if (!image?.file) return null;
+    if (image.uploadedFile) return image.uploadedFile;
+    if (image.uploadPromise) return image.uploadPromise;
+    const token = crypto.randomUUID();
+    image.uploadToken = token;
+    image.uploadStatus = "uploading";
+    image.uploadError = "";
+    const promise = upload(instance, image.file, `custom image:${id}`).then((file) => {
+      const current = instance.state.images[id];
+      if (!current || current.uploadToken !== token) return file;
+      current.uploadPromise = null;
+      current.uploadStatus = "uploaded";
+      current.uploadedFile = file;
+      current.uploadError = "";
+      return file;
+    }).catch((error) => {
+      const current = instance.state.images[id];
+      if (current && current.uploadToken === token) {
+        current.uploadPromise = null;
+        current.uploadStatus = "failed";
+        current.uploadError = error.message || "Upload failed";
+      }
+      throw error;
+    });
+    image.uploadPromise = promise;
+    renderControls(instance);
+    return promise;
   }
   async function loadCanvasImage(url) {
     const key = String(url || "");
@@ -1174,7 +1240,7 @@
       });
       const uploadedImageEntries = await Promise.all(imageEntries.map(async ([id, value]) => {
         const uploadStartedAt = nowMs();
-        const file = await upload(instance, value.dataUrl, `custom image:${id}`);
+        const file = value.uploadedFile || await (value.uploadPromise || startBackgroundUpload(instance, id));
         stageLog("Custom image ready", { id, elapsedSeconds: secondsSince(uploadStartedAt), fileId: file?.id });
         return [id, file];
       }));

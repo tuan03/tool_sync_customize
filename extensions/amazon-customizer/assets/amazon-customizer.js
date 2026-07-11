@@ -1198,8 +1198,50 @@
       }
     };
   }
+  function visibleCustomizationProperties(instance, uploadedImages) {
+    const properties = {};
+    for (const group of instance.config.optionGroups || []) {
+      if (!visible(instance, group)) continue;
+      const selectedId = instance.state.options[group.id];
+      if (!selectedId) continue;
+      const option = (group.options || []).find((item) => item.id === selectedId);
+      const value = option?.label || selectedId;
+      if (value) properties[String(group.label || group.id)] = value;
+    }
+    for (const input of instance.config.textInputs || []) {
+      if (!visible(instance, input)) continue;
+      const value = String(instance.state.texts[input.id] || "").trim();
+      if (value) properties[String(input.label || input.id)] = value;
+    }
+    for (const group of instance.config.fontGroups || []) {
+      if (!visible(instance, group)) continue;
+      const selectedId = instance.state.fonts[group.id];
+      if (!selectedId) continue;
+      const font = (group.options || []).find((item) => item.id === selectedId);
+      const value = font?.family || font?.label || selectedId;
+      if (value) properties[String(group.label || group.id)] = value;
+    }
+    for (const group of instance.config.colorGroups || []) {
+      if (!visible(instance, group)) continue;
+      const selectedId = instance.state.colors[group.id];
+      if (!selectedId) continue;
+      const color = (group.options || []).find((item) => item.id === selectedId);
+      const value = color?.name || color?.label || selectedId;
+      if (value) properties[String(group.label || group.id)] = value;
+    }
+    for (const input of instance.config.imageInputs || []) {
+      if (!visible(instance, input)) continue;
+      const image = instance.state.images[input.id];
+      if (!image) continue;
+      const uploaded = uploadedImages[input.id];
+      const value = uploaded?.filename || image.file?.name || "Uploaded image";
+      properties[String(input.label || input.id)] = value;
+    }
+    return properties;
+  }
   function customizationProperties(instance, customizationId, payload) {
-    const summary = Object.values(instance.state.texts).filter(Boolean).join(" | ").slice(0, 220) || "Customized product";
+    const visibleProperties = visibleCustomizationProperties(instance, payload.selections.images || {});
+    const summary = "Customized product";
     const payloadEncoded = toBase64Unicode(JSON.stringify(payload));
     const payloadChunks = chunkString(payloadEncoded, 240);
     const properties = {
@@ -1211,6 +1253,7 @@
       "_customization_payload_encoding": "base64-json",
       "_customization_payload_count": String(payloadChunks.length)
     };
+    Object.assign(properties, visibleProperties);
     payloadChunks.forEach((chunk, index) => {
       properties[`_customization_payload_${index + 1}`] = chunk;
     });

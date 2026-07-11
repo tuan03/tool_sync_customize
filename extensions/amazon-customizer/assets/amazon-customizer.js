@@ -549,6 +549,9 @@
       const transform = state.textTransforms[input.id] || { x: 0, y: 0, scale: 1, rotation: 0 };
       layer.innerHTML = `<div class="amzcustom-clip"><div class="amzcustom-transform-box" style="transform:${transformStyle(transform)}"><span>${escapeHtml(isSingleLineText(input) ? state.texts[input.id].replace(/\r?\n/g, " ") : state.texts[input.id])}</span></div></div>${state.activeEdit === editId ? `<div class="amzcustom-edit-box"><button type="button" class="amzcustom-rotate-handle" data-transform-handle="rotate" aria-label="Rotate"></button><button type="button" class="amzcustom-resize-handle nw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle ne" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle sw" data-transform-handle="resize" aria-label="Resize"></button><button type="button" class="amzcustom-resize-handle se" data-transform-handle="resize" aria-label="Resize"></button></div>` : ""}`;
       const fontFamily = cssFontFamily(font?.family || "Arial");
+      layer.dataset.fontFamily = font?.family || "Arial";
+      layer.dataset.fontUrl = font?.fontUrl || "";
+      layer.dataset.fontType = font?.fontType || "";
       layer.style.fontFamily = fontFamily; layer.style.color = color?.value || "#000";
       layer.style.fontSize = textFontSize(instance, input, boxStyles, state.texts[input.id], fontFamily);
       stage.appendChild(layer);
@@ -1041,6 +1044,14 @@
       height: targetRect.height / stageRect.height * size,
     };
   }
+  function rectToRatio(stageRect, targetRect) {
+    return {
+      x: (targetRect.left - stageRect.left) / stageRect.width,
+      y: (targetRect.top - stageRect.top) / stageRect.height,
+      width: targetRect.width / stageRect.width,
+      height: targetRect.height / stageRect.height,
+    };
+  }
   function toBase64Unicode(value) {
     return btoa(unescape(encodeURIComponent(String(value || ""))));
   }
@@ -1049,7 +1060,58 @@
     for (let index = 0; index < value.length; index += size) chunks.push(value.slice(index, index + size));
     return chunks;
   }
-  function buildCustomizationPayload(instance, customizationId, uploadedImages, previewFile) {
+  function buildPreviewModel(instance, uploadedImages) {
+    const stage = q(instance.modal, ".amzcustom-stage");
+    if (!stage) return null;
+    const stageRect = stage.getBoundingClientRect();
+    if (!stageRect.width || !stageRect.height) return null;
+    const layers = [];
+    for (const child of stage.children) {
+      if (child.tagName === "IMG") {
+        layers.push({
+          type: "image",
+          src: child.currentSrc || child.src,
+          rect: rectToRatio(stageRect, child.getBoundingClientRect())
+        });
+        continue;
+      }
+      const editId = child.dataset.editId || "";
+      const imageId = editId.startsWith("image:") ? editId.split(":")[1] : "";
+      const inner = child.querySelector(".amzcustom-transform-box img");
+      if (inner) {
+        const uploaded = imageId ? uploadedImages[imageId] : null;
+        layers.push({
+          type: "clipped-image",
+          src: uploaded?.url || inner.currentSrc || inner.src,
+          clipRect: rectToRatio(stageRect, (child.querySelector(".amzcustom-clip") || child).getBoundingClientRect()),
+          imageRect: rectToRatio(stageRect, inner.getBoundingClientRect())
+        });
+        continue;
+      }
+      const textNode = child.querySelector(".amzcustom-transform-box span") || child.querySelector("span") || child;
+      const textBox = child.querySelector(".amzcustom-transform-box") || child;
+      const style = getComputedStyle(child);
+      layers.push({
+        type: "text",
+        text: textNode.textContent || "",
+        rect: rectToRatio(stageRect, textBox.getBoundingClientRect()),
+        color: style.color || "#000000",
+        fontFamily: child.dataset.fontFamily || style.fontFamily || "Arial",
+        fontUrl: child.dataset.fontUrl || "",
+        fontType: child.dataset.fontType || "",
+        fontSizeRatio: (parseFloat(style.fontSize) || 16) / stageRect.width,
+        lineHeightRatio: ((parseFloat(style.fontSize) || 16) * 1.18) / stageRect.height,
+        singleLine: child.classList.contains("is-single-line")
+      });
+    }
+    return {
+      width: Math.round(stageRect.width),
+      height: Math.round(stageRect.height),
+      background: "#ffffff",
+      layers
+    };
+  }
+  function buildCustomizationPayload(instance, customizationId, uploadedImages) {
     return {
       customizationId,
       schemaVersion: instance.config.schemaVersion,
@@ -1057,7 +1119,7 @@
       variantId: instance.root.dataset.variantId,
       createdAt: new Date().toISOString(),
       surcharge: surcharge(instance),
-      preview: previewFile,
+      previewModel: buildPreviewModel(instance, uploadedImages),
       selections: {
         options: instance.state.options,
         texts: instance.state.texts,
@@ -1070,14 +1132,13 @@
       }
     };
   }
-  function customizationProperties(instance, customizationId, previewFile, payload) {
+  function customizationProperties(instance, customizationId, payload) {
     const summary = Object.values(instance.state.texts).filter(Boolean).join(" | ").slice(0, 220) || "Customized product";
     const payloadEncoded = toBase64Unicode(JSON.stringify(payload));
     const payloadChunks = chunkString(payloadEncoded, 240);
     const properties = {
       Customization: summary,
       "_customization_id": customizationId,
-      "_customization_preview": previewFile.url,
       "_customization_fee": String(payload.surcharge),
       "_customization_options": JSON.stringify(instance.state.options),
       "_customization_schema": String(instance.config.schemaVersion),
@@ -1088,53 +1149,6 @@
       properties[`_customization_payload_${index + 1}`] = chunk;
     });
     return properties;
-  }
-  async function previewDataUrl(instance) {
-    const startedAt = nowMs();
-    const stage=q(instance.modal,".amzcustom-stage"), rect=stage.getBoundingClientRect(), size=640;
-    const canvas=document.createElement("canvas"); canvas.width=canvas.height=size; const context=canvas.getContext("2d"); context.fillStyle="#fff"; context.fillRect(0,0,size,size);
-    for (const child of stage.children) {
-      const childRect=child.getBoundingClientRect(), childCanvasRect=rectToCanvas(rect, childRect, size);
-      if (child.tagName === "IMG") {
-        const image=await loadCanvasImage(child.src);
-        context.drawImage(image,childCanvasRect.x,childCanvasRect.y,childCanvasRect.width,childCanvasRect.height);
-        continue;
-      }
-      const inner=child.querySelector("img");
-      if (inner) {
-        const image=await loadCanvasImage(inner.src);
-        const clipRect = rectToCanvas(rect, (child.querySelector(".amzcustom-clip") || child).getBoundingClientRect(), size);
-        const imageRect = rectToCanvas(rect, inner.getBoundingClientRect(), size);
-        context.save();
-        context.beginPath();
-        context.rect(clipRect.x, clipRect.y, clipRect.width, clipRect.height);
-        context.clip();
-        context.drawImage(image, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
-        context.restore();
-      }
-      else {
-        const textNode=child.querySelector("span") || child;
-        const textBox=child.querySelector(".amzcustom-transform-box") || child;
-        const style=getComputedStyle(child);
-        const textRect=rectToCanvas(rect, textBox.getBoundingClientRect(), size);
-        context.save();
-        context.fillStyle=style.color;
-        context.font=`${Math.max(12,parseFloat(style.fontSize)/rect.width*size)}px ${style.fontFamily}`;
-        context.textAlign="center";
-        context.textBaseline="middle";
-        const lines=textNode.textContent.split(/\r?\n/);
-        lines.forEach((line,index)=>context.fillText(line,textRect.x+textRect.width/2,textRect.y+textRect.height/2+(index-(lines.length-1)/2)*32,textRect.width));
-        context.restore();
-      }
-    }
-    const dataUrl = canvas.toDataURL("image/jpeg", .82);
-    stageLog("Preview rendered", {
-      elapsedSeconds: secondsSince(startedAt),
-      size,
-      mimeType: "image/jpeg",
-      bytesApprox: Math.round(String(dataUrl || "").length * 0.75)
-    });
-    return dataUrl;
   }
   async function finish(instance) {
     if (!validate(instance)) {
@@ -1158,7 +1172,6 @@
         basePrice: basePrice(instance),
         totalPrice: totalPrice(instance)
       });
-      const previewPromise = previewDataUrl(instance);
       const uploadedImageEntries = await Promise.all(imageEntries.map(async ([id, value]) => {
         const uploadStartedAt = nowMs();
         const file = await upload(instance, value.dataUrl, `custom image:${id}`);
@@ -1171,29 +1184,22 @@
         elapsedSeconds: secondsSince(startedAt),
         uploadedImageCount: uploadedImageEntries.length
       });
-      const pDataUrl = await previewPromise;
-      const previewUploadStartedAt = nowMs();
-      const previewFile=await upload(instance, pDataUrl, "cart preview");
-      stageLog("Cart preview ready", {
-        elapsedSeconds: secondsSince(previewUploadStartedAt),
-        previewUrl: previewFile?.url
-      });
       
       const customizationId = crypto.randomUUID();
-      const payload = buildCustomizationPayload(instance, customizationId, uploadedImages, previewFile);
+      const payload = buildCustomizationPayload(instance, customizationId, uploadedImages);
       stageLog("Customization payload prepared", {
         elapsedSeconds: secondsSince(startedAt),
-        payloadBytes: JSON.stringify(payload).length
+        payloadBytes: JSON.stringify(payload).length,
+        previewLayers: payload.previewModel?.layers?.length || 0
       });
       
       try {
-        localStorage.setItem("amzcustom_preview_" + instance.root.dataset.variantId, previewFile.url);
         const surchargeCents = Math.round(surcharge(instance) * 100);
         localStorage.setItem("amzcustom_surcharge_" + instance.root.dataset.variantId, String(surchargeCents));
       } catch (e) {
       }
       
-      const properties = customizationProperties(instance, customizationId, previewFile, payload);
+      const properties = customizationProperties(instance, customizationId, payload);
       const items = [{ id:Number(instance.root.dataset.variantId), quantity:1, properties }];
       
       const feeCounts={}; for(const group of instance.config.optionGroups){const option=selected(group,instance.state);if(option?.cost>0)feeCounts[option.cost]=(feeCounts[option.cost]||0)+1;}

@@ -108,7 +108,6 @@
       height: rect.height * size
     };
   }
-
   async function renderPreviewDataUrl(previewModel, size = 320) {
     const cacheKey = JSON.stringify([previewModel, size]);
     if (previewCache.has(cacheKey)) return previewCache.get(cacheKey);
@@ -190,7 +189,184 @@
   }
 
   function imageElementForRoot(root) {
-    return root.querySelector("img");
+    return [...root.querySelectorAll("img")].find((image) => !image.closest("[data-amzcustom-cart-stage]")) || null;
+  }
+  function forceCartImageSource(image, src) {
+    const picture = image.closest("picture");
+    if (picture) {
+      picture.querySelectorAll("source").forEach((source) => {
+        source.dataset.amzcustomOriginalSrcset = source.dataset.amzcustomOriginalSrcset || source.getAttribute("srcset") || "";
+        source.removeAttribute("srcset");
+      });
+    }
+    image.dataset.amzcustomOriginalSrc = image.dataset.amzcustomOriginalSrc || image.currentSrc || image.src;
+    image.dataset.amzcustomOriginalSrcset = image.dataset.amzcustomOriginalSrcset || image.getAttribute("srcset") || "";
+    image.removeAttribute("srcset");
+    image.srcset = "";
+    image.src = src;
+    image.style.objectFit = "contain";
+    image.style.objectPosition = "center center";
+    image.style.backgroundColor = "#fff";
+    image.setAttribute("data-amzcustom-preview", "true");
+  }
+  function cssFontFamily(value) {
+    const raw = String(value || "Arial").split(",")[0].trim().replace(/^['"]|['"]$/g, "");
+    return `"${raw.replace(/"/g, '\\"')}", Arial, sans-serif`;
+  }
+  function percentRect(rect) {
+    return {
+      left: `${(rect?.x || 0) * 100}%`,
+      top: `${(rect?.y || 0) * 100}%`,
+      width: `${(rect?.width || 0) * 100}%`,
+      height: `${(rect?.height || 0) * 100}%`
+    };
+  }
+  function setImportantStyles(element, styles) {
+    Object.entries(styles).forEach(([property, value]) => {
+      element.style.setProperty(property, value, "important");
+    });
+  }
+  function setImportantRect(element, rect) {
+    setImportantStyles(element, percentRect(rect));
+  }
+  function cartTextSize(layer, stageSize) {
+    return `${Math.max(8, (Number(layer.fontSizeRatio) || 0.05) * stageSize)}px`;
+  }
+  async function renderCartDomPreview(previewModel, image, key) {
+    if (!previewModel?.layers?.length || !image) return false;
+    const picture = image.closest("picture");
+    const hiddenNode = picture || image;
+    const host = (picture && picture.parentElement) || image.parentElement;
+    if (!host) return false;
+
+    const imageRect = image.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    const width = imageRect.width || image.clientWidth || 120;
+    const height = imageRect.height || image.clientHeight || 120;
+    if (!width || !height) return false;
+
+    if (getComputedStyle(host).position === "static") {
+      host.style.setProperty("position", "relative", "important");
+    }
+    host.querySelectorAll("[data-amzcustom-cart-stage]").forEach((node) => node.remove());
+
+    const stage = document.createElement("div");
+    stage.dataset.amzcustomCartStage = "true";
+    setImportantStyles(stage, {
+      position: "absolute",
+      left: `${imageRect.left - hostRect.left}px`,
+      top: `${imageRect.top - hostRect.top}px`,
+      width: `${width}px`,
+      height: `${height}px`,
+      overflow: "hidden",
+      background: previewModel.background || "#ffffff",
+      "pointer-events": "none",
+      "z-index": "2",
+      "box-sizing": "border-box",
+      display: "block",
+      margin: "0",
+      padding: "0",
+      border: "0",
+      transform: "none",
+      opacity: "1"
+    });
+
+    const layers = [
+      ...(previewModel.layers || []).filter((layer) => layer.type !== "text"),
+      ...(previewModel.layers || []).filter((layer) => layer.type === "text")
+    ];
+    await Promise.all(layers.filter((layer) => layer.type === "text").map(ensureFont));
+
+    for (const layer of layers) {
+      if (layer.type === "image") {
+        const item = document.createElement("img");
+        item.alt = "";
+        item.src = layer.src || "";
+        setImportantStyles(item, {
+          position: "absolute",
+          display: "block",
+          "object-fit": "contain",
+          "object-position": "center center",
+          "max-width": "none",
+          "max-height": "none",
+          margin: "0",
+          padding: "0",
+          border: "0",
+          transform: "none",
+          opacity: "1"
+        });
+        setImportantRect(item, layer.rect);
+        stage.appendChild(item);
+        continue;
+      }
+      if (layer.type === "clipped-image") {
+        const clip = document.createElement("div");
+        setImportantStyles(clip, {
+          position: "absolute",
+          overflow: "hidden",
+          display: "block",
+          margin: "0",
+          padding: "0",
+          border: "0",
+          transform: "none",
+          opacity: "1"
+        });
+        setImportantRect(clip, layer.clipRect);
+        const item = document.createElement("img");
+        item.alt = "";
+        item.src = layer.src || "";
+        const clipRect = layer.clipRect || { x: 0, y: 0, width: 1, height: 1 };
+        const sourceRect = layer.imageRect || clipRect;
+        setImportantStyles(item, {
+          position: "absolute",
+          display: "block",
+          "object-fit": "contain",
+          "object-position": "center center",
+          "max-width": "none",
+          "max-height": "none",
+          left: `${((sourceRect.x - clipRect.x) / Math.max(clipRect.width, 0.0001)) * 100}%`,
+          top: `${((sourceRect.y - clipRect.y) / Math.max(clipRect.height, 0.0001)) * 100}%`,
+          width: `${(sourceRect.width / Math.max(clipRect.width, 0.0001)) * 100}%`,
+          height: `${(sourceRect.height / Math.max(clipRect.height, 0.0001)) * 100}%`,
+          margin: "0",
+          padding: "0",
+          border: "0",
+          transform: "none",
+          opacity: "1"
+        });
+        clip.appendChild(item);
+        stage.appendChild(clip);
+        continue;
+      }
+      if (layer.type === "text") {
+        const item = document.createElement("div");
+        item.textContent = layer.singleLine ? String(layer.text || "").replace(/\s+/g, " ") : String(layer.text || "");
+        setImportantStyles(item, {
+          position: "absolute",
+          display: "grid",
+          "place-items": "center",
+          "text-align": "center",
+          "white-space": layer.singleLine ? "nowrap" : "pre-wrap",
+          "overflow-wrap": layer.singleLine ? "normal" : "anywhere",
+          "line-height": "1.18",
+          color: layer.color || "#000000",
+          "font-family": cssFontFamily(layer.fontFamily),
+          "font-size": cartTextSize(layer, width),
+          margin: "0",
+          padding: "0",
+          border: "0",
+          transform: "none",
+          opacity: "1",
+          "z-index": "3"
+        });
+        setImportantRect(item, layer.rect);
+        stage.appendChild(item);
+      }
+    }
+
+    hiddenNode.style.setProperty("visibility", "hidden", "important");
+    host.appendChild(stage);
+    return true;
   }
 
   function titlePattern(item) {
@@ -239,11 +415,10 @@
       const image = root && imageElementForRoot(root);
       if (!image) continue;
       try {
+        const renderedDom = await renderCartDomPreview(previewItem.payload.previewModel, image, previewItem.item.key);
+        if (renderedDom) continue;
         const dataUrl = await renderPreviewDataUrl(previewItem.payload.previewModel, 320);
-        image.dataset.amzcustomOriginalSrc = image.dataset.amzcustomOriginalSrc || image.currentSrc || image.src;
-        image.src = dataUrl;
-        image.removeAttribute("srcset");
-        image.setAttribute("data-amzcustom-preview", "true");
+        forceCartImageSource(image, dataUrl);
       } catch (error) {
         console.warn("[Amazon Customizer] Could not render cart preview", error);
       }

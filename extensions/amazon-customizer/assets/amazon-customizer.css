@@ -55,6 +55,7 @@
 .amzcustom-control { position: relative; display: grid; gap: 8px; min-width: 0; padding: 14px; border-bottom: 1px solid #e3e6e6; }
 .amzcustom-control:last-child { border-bottom: 0; }
 .amzcustom-control.is-editing { background: #f0fbff; box-shadow: inset 3px 0 0 #007185; }
+.amzcustom-control.is-invalid { background: #fff7f7; box-shadow: inset 3px 0 0 #b42318; }
 .amzcustom-title { display: grid; grid-template-columns: minmax(0,max-content) auto auto; justify-content: start; align-items: center; column-gap: 6px; row-gap: 2px; font-weight: 1000; line-height: 1.25; }
 .amzcustom-title > span { min-width: 0; overflow-wrap: anywhere; }
 .amzcustom-title strong { color: #111; font-weight: 400; }
@@ -209,8 +210,13 @@
 .amzcustom-price-summary { display: grid; gap: 2px; min-width: 0; }
 .amzcustom-total-price { min-width: 0; overflow-wrap: anywhere; color: #111; }
 .amzcustom-add { min-width: 148px; min-height: 46px; border: 1px solid #fcd200; border-radius: 999px; background: #ffd814; color: #111; font-weight: 800; cursor: pointer; }
+.amzcustom-add.is-loading { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+.amzcustom-add.is-loading .amzcustom-spinner { width: 18px; height: 18px; border: 2px solid rgba(17,17,17,.24); border-top-color: #111; border-radius: 50%; animation: amzcustom-spin .8s linear infinite; }
 .amzcustom-error { color: #b42318; font-size: 13px; }
 body.amzcustom-locked { overflow: hidden; }
+@keyframes amzcustom-spin {
+  to { transform: rotate(360deg); }
+}
 @media (min-width: 560px) {
   .amzcustom-stage { width: min(100%,360px,40dvh); }
   .amzcustom-upload-row { grid-template-columns: 80px minmax(0,1fr); gap: 22px; }

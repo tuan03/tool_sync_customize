@@ -819,14 +819,14 @@
       item.options = Array.isArray(item.options) ? item.options : [];
       const hasImages = item.options.some((option) => option.thumbnailImage || option.overlayImage);
       const selectedValue = item.options.find((option) => option.id === state.options[item.id])?.label || "";
-      if (item.displayHint === "choice-grid" || hasImages || isYesNoGroup(item) || isSizeChoiceGroup(item) || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(instance, state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
-      return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(displayAmount(instance, option.cost), instance)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      if (item.displayHint === "choice-grid" || hasImages || isYesNoGroup(item) || isSizeChoiceGroup(item) || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control ${state.errors[item.id] ? "is-invalid" : ""}" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(instance, state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      return `<section class="amzcustom-control ${state.errors[item.id] ? "is-invalid" : ""}" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(displayAmount(instance, option.cost), instance)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
     if (type === "text") {
       const value = state.texts[item.id] || "";
-      return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}${item.maxLines > 1 ? `<textarea maxlength="${item.maxLength || ""}" rows="${Math.min(item.maxLines || 3, 5)}">${escapeHtml(value)}</textarea>` : `<input type="text" maxlength="${item.maxLength || ""}" value="${escapeHtml(value)}" placeholder="${escapeHtml(item.placeholder || "")}">`}<div class="amzcustom-meta"><span>${value.length}${item.maxLength ? `/${item.maxLength}` : ""}</span></div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      return `<section class="amzcustom-control ${state.errors[item.id] ? "is-invalid" : ""}" data-id="${item.id}">${controlHeader(item)}${item.maxLines > 1 ? `<textarea maxlength="${item.maxLength || ""}" rows="${Math.min(item.maxLines || 3, 5)}">${escapeHtml(value)}</textarea>` : `<input type="text" maxlength="${item.maxLength || ""}" value="${escapeHtml(value)}" placeholder="${escapeHtml(item.placeholder || "")}">`}<div class="amzcustom-meta"><span>${value.length}${item.maxLength ? `/${item.maxLength}` : ""}</span></div><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
-    if (type === "image") { const active = state.activeEdit === `image:${item.id}`; return `<section class="amzcustom-control ${active ? "is-editing" : ""}" data-id="${item.id}">${controlHeader(item)}<input class="amzcustom-file is-hidden" type="file" accept="image/png,image/jpeg,image/webp">${state.images[item.id] ? `<div class="amzcustom-upload-row"><img src="${escapeHtml(state.images[item.id].dataUrl)}" alt=""><div class="amzcustom-actions">${imageActionButton(active ? "done" : "edit", active ? "Done" : "Edit", active ? "done" : "edit")}${imageActionButton("replace", "Replace", "replace")}${imageActionButton("delete", "Delete", "delete")}</div></div>${imageUploadStatusHtml(state.images[item.id])}` : uploadButtonHtml()}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`; }
+    if (type === "image") { const active = state.activeEdit === `image:${item.id}`; return `<section class="amzcustom-control ${active ? "is-editing" : ""} ${state.errors[item.id] ? "is-invalid" : ""}" data-id="${item.id}">${controlHeader(item)}<input class="amzcustom-file is-hidden" type="file" accept="image/png,image/jpeg,image/webp">${state.images[item.id] ? `<div class="amzcustom-upload-row"><img src="${escapeHtml(state.images[item.id].dataUrl)}" alt=""><div class="amzcustom-actions">${imageActionButton(active ? "done" : "edit", active ? "Done" : "Edit", active ? "done" : "edit")}${imageActionButton("replace", "Replace", "replace")}${imageActionButton("delete", "Delete", "delete")}</div></div>${imageUploadStatusHtml(state.images[item.id])}` : uploadButtonHtml()}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`; }
     if (type === "font") return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}${fontDropdownHtml(state, item)}</section>`;
     if (type === "color") { const options = Array.isArray(item.options) ? item.options : []; return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item)}<div class="amzcustom-swatches">${options.map((color) => `<button type="button" class="amzcustom-swatch ${state.colors[item.id] === color.id ? "is-selected" : ""}" data-color="${escapeHtml(color.id)}" style="--swatch:${escapeHtml(color.value || "#fff")}" title="${escapeHtml(color.name)}"><span>${escapeHtml(color.name)}</span></button>`).join("")}</div></section>`; }
     return "";
@@ -872,8 +872,9 @@
       setTimeout(() => restoreScrollState(instance, state), 0);
     });
   }
-  function renderControls(instance) {
-    const scrollState = captureScrollState(instance);
+  function renderControls(instance, options = {}) {
+    const preserveScroll = options.preserveScroll !== false;
+    const scrollState = preserveScroll ? captureScrollState(instance) : null;
     evaluate(instance);
     const maps = { option:new Map(instance.config.optionGroups.map((x)=>[x.id,x])), text:new Map(instance.config.textInputs.map((x)=>[x.id,x])), image:new Map(instance.config.imageInputs.map((x)=>[x.id,x])), font:new Map(instance.config.fontGroups.map((x)=>[x.id,x])), color:new Map(instance.config.colorGroups.map((x)=>[x.id,x])) };
     const seen = new Set();
@@ -889,7 +890,9 @@
     }
     q(instance.modal, ".amzcustom-controls").innerHTML = html;
     bindControls(instance); renderPreview(instance); requestAnimationFrame(() => positionOptionLists(instance));
-    scheduleScrollRestore(instance, scrollState);
+    if (preserveScroll && scrollState) {
+      scheduleScrollRestore(instance, scrollState);
+    }
   }
   function positionOptionLists(instance) {
     const dialog = q(instance.modal, ".amzcustom-dialog");
@@ -1085,7 +1088,78 @@
       }
     }
     for (const input of instance.config.imageInputs) if (visible(instance,input) && input.required && !instance.state.images[input.id]) errors[input.id] = "Bắt buộc tải ảnh.";
-    instance.state.errors = errors; return !Object.keys(errors).length;
+    instance.state.errors = errors;
+    stageLog("Validation result", {
+      errorIds: Object.keys(errors),
+      firstErrorId: Object.keys(errors)[0] || null
+    });
+    return !Object.keys(errors).length;
+  }
+  function scrollToFirstError(instance) {
+    const firstErrorId = Object.keys(instance.state.errors || {})[0];
+    if (!firstErrorId) {
+      stageLog("Scroll to first error skipped", { reason: "no_errors" });
+      return;
+    }
+    requestAnimationFrame(() => {
+      const control = q(instance.modal, `[data-id="${CSS.escape(firstErrorId)}"]`);
+      const dialog = q(instance.modal, ".amzcustom-dialog");
+      if (!control) {
+        stageLog("Scroll to first error failed", {
+          firstErrorId,
+          reason: "control_not_found"
+        });
+        return;
+      }
+      if (dialog) {
+        const headHeight = q(instance.modal, ".amzcustom-head")?.getBoundingClientRect().height || 0;
+        const footHeight = q(instance.modal, ".amzcustom-foot")?.getBoundingClientRect().height || 0;
+        const dialogRect = dialog.getBoundingClientRect();
+        const controlRect = control.getBoundingClientRect();
+        const currentScroll = dialog.scrollTop;
+        const topInDialog = controlRect.top - dialogRect.top + currentScroll;
+        const targetScroll = Math.max(0, topInDialog - headHeight - 20);
+        const visibleTop = currentScroll + headHeight;
+        const visibleBottom = currentScroll + dialog.clientHeight - footHeight;
+        const controlTop = topInDialog;
+        const controlBottom = topInDialog + controlRect.height;
+        const needsScroll = controlTop < visibleTop || controlBottom > visibleBottom;
+        stageLog("Scroll to first error metrics", {
+          firstErrorId,
+          currentScroll,
+          targetScroll,
+          headHeight,
+          footHeight,
+          dialogClientHeight: dialog.clientHeight,
+          controlTop,
+          controlBottom,
+          visibleTop,
+          visibleBottom,
+          needsScroll
+        });
+        if (needsScroll) {
+          dialog.scrollTo({ top: targetScroll, behavior: "smooth" });
+          requestAnimationFrame(() => {
+            stageLog("Scroll to first error after scroll", {
+              firstErrorId,
+              scrollTopAfter: dialog.scrollTop
+            });
+          });
+        }
+      } else {
+        stageLog("Scroll to first error failed", {
+          firstErrorId,
+          reason: "dialog_not_found"
+        });
+      }
+      const field = control.querySelector("input:not([type='file']), textarea, select, button, .amzcustom-upload-button");
+      stageLog("Scroll to first error focus target", {
+        firstErrorId,
+        fieldTag: field?.tagName || null,
+        fieldType: field?.getAttribute?.("type") || null
+      });
+      field?.focus?.({ preventScroll: true });
+    });
   }
   async function upload(instance, file, label = "asset") {
     if (!instance.root.dataset.uploadUrl) throw new Error("Theme block chưa cấu hình upload URL.");
@@ -1339,7 +1413,9 @@
   }
   async function finish(instance) {
     if (!validate(instance)) {
-      return renderControls(instance);
+      renderControls(instance, { preserveScroll: false });
+      scrollToFirstError(instance);
+      return;
     }
     const add = q(instance.modal, ".amzcustom-add");
     const startedAt = performance.now();
@@ -1349,7 +1425,9 @@
       productId: instance.root.dataset.productId,
       startedAt: startedAtIso
     });
-    add.disabled = true; add.textContent = "Saving...";
+    add.disabled = true;
+    add.classList.add("is-loading");
+    add.innerHTML = '<span class="amzcustom-spinner" aria-hidden="true"></span><span>Saving...</span>';
     try {
       const imageEntries = Object.entries(instance.state.images);
       stageLog("Add customized item context", {
@@ -1430,6 +1508,7 @@
       });
       alert(error.message);
       add.disabled = false;
+      add.classList.remove("is-loading");
       add.textContent = "Add customized item";
     }
   }

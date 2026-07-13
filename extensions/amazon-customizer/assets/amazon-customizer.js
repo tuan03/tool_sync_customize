@@ -58,15 +58,53 @@
     }
     return { options, fonts, colors, texts: {}, images: {}, imageTransforms: {}, textTransforms: {}, placementOffsets: {}, visible: {}, errors: {}, activeEdit: "", expandedOptionGroups: {}, promotedOptionIds: {} };
   }
-  function formatMoney(value) {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(value || 0));
+  function resolveCurrency(context) {
+    if (typeof context === "string" && context) return context;
+    const dataset = context?.root?.dataset || context?.dataset;
+    return (
+      dataset?.currencyCode ||
+      document.querySelector("[data-amzcustom-root]")?.dataset?.currencyCode ||
+      window.Shopify?.currency?.active ||
+      "USD"
+    );
+  }
+  function formatMoney(value, context) {
+    const amount = Number(value || 0);
+    const currency = resolveCurrency(context);
+    const locale = document.documentElement.lang || navigator.language || "en-US";
+    try {
+      return new Intl.NumberFormat(locale, { style: "currency", currency }).format(amount);
+    } catch (_error) {
+      return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
+    }
   }
   function basePrice(instance) {
     const value = Number(instance?.root?.dataset?.basePrice || 0);
     return Number.isFinite(value) ? value : 0;
   }
+  function sourceCurrency(instance) {
+    return String(instance?.config?.pricing?.currencyCode || resolveCurrency(instance) || "USD").toUpperCase();
+  }
+  function activeCurrency(instance) {
+    return String(resolveCurrency(instance) || "USD").toUpperCase();
+  }
+  function requiresPresentmentPricing(instance) {
+    return sourceCurrency(instance) !== activeCurrency(instance);
+  }
+  function displayAmount(instance, value) {
+    const amount = Number(value || 0);
+    if (!Number.isFinite(amount)) return 0;
+    const mapped = instance?.presentmentPrices?.[String(amount)];
+    return Number.isFinite(mapped) ? mapped : amount;
+  }
+  function surcharge(instance) {
+    return (instance.config.optionGroups || []).reduce((total, group) => total + (selected(group, instance.state)?.cost || 0), 0);
+  }
+  function displaySurcharge(instance) {
+    return (instance.config.optionGroups || []).reduce((total, group) => total + displayAmount(instance, selected(group, instance.state)?.cost || 0), 0);
+  }
   function totalPrice(instance) {
-    return basePrice(instance) + surcharge(instance);
+    return basePrice(instance) + displaySurcharge(instance);
   }
   function nowMs() {
     return performance.now();
@@ -441,7 +479,47 @@
   }
   function asset(url) { return url || ""; }
   function selected(group, state) { return (Array.isArray(group.options) ? group.options : []).find((option) => option.id === state.options[group.id]); }
-  function surcharge(instance) { return (instance.config.optionGroups || []).reduce((total, group) => total + (selected(group, instance.state)?.cost || 0), 0); }
+  async function ensurePresentmentPricing(instance) {
+    if (!instance || !requiresPresentmentPricing(instance)) return;
+    if (instance.presentmentLoaded) return;
+    if (instance.presentmentPromise) return instance.presentmentPromise;
+    const variantIds = Object.values(instance.config?.pricing?.variantIds || {}).filter(Boolean);
+    const countryCode = String(instance.root?.dataset?.countryCode || "US").toUpperCase();
+    if (!variantIds.length || !/^[A-Z]{2}$/.test(countryCode)) {
+      instance.presentmentLoaded = true;
+      return;
+    }
+    instance.presentmentPromise = (async () => {
+      try {
+        const response = await fetch(instance.root.dataset.uploadUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "pricing", countryCode, variantIds })
+        });
+        if (!response.ok) throw new Error(`Presentment pricing failed (${response.status})`);
+        const payload = await response.json();
+        const pricesByVariantId = payload?.prices || {};
+        const amounts = {};
+        for (const [amount, variantId] of Object.entries(instance.config?.pricing?.variantIds || {})) {
+          const mapped = Number(pricesByVariantId[variantId]?.amount);
+          if (Number.isFinite(mapped) && mapped > 0) amounts[String(Number(amount))] = mapped;
+        }
+        instance.presentmentPrices = amounts;
+      } catch (error) {
+        console.warn("[Amazon Customizer] Presentment pricing fallback to source currency amounts", {
+          countryCode,
+          sourceCurrency: sourceCurrency(instance),
+          activeCurrency: activeCurrency(instance),
+          error: error?.message || String(error)
+        });
+      } finally {
+        instance.presentmentLoaded = true;
+        instance.presentmentPromise = null;
+        if (!instance.modal.hidden) renderControls(instance);
+      }
+    })();
+    return instance.presentmentPromise;
+  }
   function box(config, placementId, state) {
     const placement = (config.placements || []).find((item) => item.id === placementId);
     const size = config.product.previewSize || 400;
@@ -559,8 +637,8 @@
     if (surface?.maskImage?.url) stage.insertAdjacentHTML("beforeend", `<img class="amzcustom-stage-mask" alt="" src="${escapeHtml(asset(surface.maskImage.url))}">`);
     bindPreviewDrag(instance);
     syncEditBoxes(stage);
-    q(instance.modal, ".amzcustom-price").textContent = `Surcharge: ${formatMoney(surcharge(instance))}`;
-    q(instance.modal, ".amzcustom-total-price").textContent = `Total: ${formatMoney(totalPrice(instance))}`;
+    q(instance.modal, ".amzcustom-price").textContent = `Surcharge: ${formatMoney(displaySurcharge(instance), instance)}`;
+    q(instance.modal, ".amzcustom-total-price").textContent = `Total: ${formatMoney(totalPrice(instance), instance)}`;
   }
   function bindPreviewDrag(instance) {
     const stage=q(instance.modal,".amzcustom-stage");
@@ -713,7 +791,7 @@
     if (status === "failed") return `<div class="amzcustom-meta"><span>${escapeHtml(image.uploadError || "Upload failed. We will retry when you add to cart.")}</span></div>`;
     return "";
   }
-  function optionChoicesHtml(state, item) {
+  function optionChoicesHtml(instance, state, item) {
     item.options = Array.isArray(item.options) ? item.options : [];
     const isMobile = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
     const shouldCollapse = !isMobile && item.options.length > COLLAPSED_OPTION_LIMIT;
@@ -726,7 +804,7 @@
     const optionItems = !item.required ? [{ id: "", label: "No selection", cost: 0, noSelection: true }, ...visibleOptions] : visibleOptions;
     const choices = optionItems.map((option) => {
       const img = option.thumbnailImage || option.overlayImage;
-      return `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="primary" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-stock-icon"></span>`}<span>${escapeHtml(option.label)}</span>${option.outOfStock ? "<small>Out of stock</small>" : option.cost ? `<small>+${formatMoney(option.cost)}</small>` : ""}</button>`;
+      return `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="primary" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-stock-icon"></span>`}<span>${escapeHtml(option.label)}</span>${option.outOfStock ? "<small>Out of stock</small>" : option.cost ? `<small>+${formatMoney(displayAmount(instance, option.cost), instance)}</small>` : ""}</button>`;
     }).join("");
     const toggle = shouldCollapse ? `<button type="button" class="amzcustom-options-toggle" data-options-toggle="${escapeHtml(item.id)}">${expanded ? "See less" : `See all ${item.options.length} options`}</button>` : "";
     const primaryIds = new Set(primaryOptions.map((option) => option.id));
@@ -741,8 +819,8 @@
       item.options = Array.isArray(item.options) ? item.options : [];
       const hasImages = item.options.some((option) => option.thumbnailImage || option.overlayImage);
       const selectedValue = item.options.find((option) => option.id === state.options[item.id])?.label || "";
-      if (item.displayHint === "choice-grid" || hasImages || isYesNoGroup(item) || isSizeChoiceGroup(item) || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
-      return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(option.cost)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      if (item.displayHint === "choice-grid" || hasImages || isYesNoGroup(item) || isSizeChoiceGroup(item) || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(instance, state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      return `<section class="amzcustom-control" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(displayAmount(instance, option.cost), instance)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
     if (type === "text") {
       const value = state.texts[item.id] || "";
@@ -1277,7 +1355,8 @@
       stageLog("Add customized item context", {
         variantId: instance.root.dataset.variantId,
         imageCount: imageEntries.length,
-        surcharge: surcharge(instance),
+        surcharge: displaySurcharge(instance),
+        rawSurcharge: surcharge(instance),
         basePrice: basePrice(instance),
         totalPrice: totalPrice(instance)
       });
@@ -1312,7 +1391,7 @@
       const items = [{ id:Number(instance.root.dataset.variantId), quantity:1, properties }];
       
       const feeCounts={}; for(const group of instance.config.optionGroups){const option=selected(group,instance.state);if(option?.cost>0)feeCounts[option.cost]=(feeCounts[option.cost]||0)+1;}
-      for(const [amount,quantity] of Object.entries(feeCounts)){const gid=instance.config.pricing.variantIds?.[amount];if(!gid)throw new Error(`Missing add-on variant for surcharge ${formatMoney(amount)}. Please sync the product again.`);items.push({id:Number(String(gid).split("/").pop()),parent_id:Number(instance.root.dataset.variantId),quantity,properties:{"_customization_id":customizationId,"_customization_parent_variant":instance.root.dataset.variantId,"_customization_fee_component":amount}});}
+      for(const [amount,quantity] of Object.entries(feeCounts)){const gid=instance.config.pricing.variantIds?.[amount];if(!gid)throw new Error(`Missing add-on variant for surcharge ${formatMoney(amount, instance)}. Please sync the product again.`);items.push({id:Number(String(gid).split("/").pop()),parent_id:Number(instance.root.dataset.variantId),quantity,properties:{"_customization_id":customizationId,"_customization_parent_variant":instance.root.dataset.variantId,"_customization_fee_component":amount}});}
       
       const cartAddStartedAt = nowMs();
       const addResponse = await fetch(`${window.Shopify.routes.root}cart/add.js`, { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({items}) });
@@ -1371,7 +1450,8 @@
     for(const group of config.fontGroups||[])for(const font of group.options||[])ensureFontLoaded(font);
     const modal = document.createElement("div"); modal.className="amzcustom-modal"; modal.hidden=true;
     modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><div class="amzcustom-price-summary"><strong class="amzcustom-price"></strong><strong class="amzcustom-total-price"></strong></div><button class="amzcustom-add">Add customized item</button></footer></section>`;
-    document.body.appendChild(modal); const instance={root,modal,config,state:initialState(config)}; instances.set(root,instance);
+    document.body.appendChild(modal); const instance={root,modal,config,state:initialState(config),presentmentPrices:{},presentmentLoaded:false,presentmentPromise:null}; instances.set(root,instance);
+    ensurePresentmentPricing(instance);
     q(root,".amzcustom-open").addEventListener("click",()=>{ modal.hidden=false; document.body.classList.add("amzcustom-locked"); renderControls(instance); scheduleFontReadyRender(instance); });
     const close=()=>{modal.hidden=true;document.body.classList.remove("amzcustom-locked");}; q(modal,".amzcustom-close").addEventListener("click",close); q(modal,".amzcustom-backdrop").addEventListener("click",close); q(modal,".amzcustom-add").addEventListener("click",()=>finish(instance));
     const form = root.closest('form[action*="/cart/add"]');

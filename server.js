@@ -253,6 +253,15 @@ async function handleShopifyUpload(req, res, requestUrl) {
       });
       return;
     }
+    if (body.action === "pricing") {
+      const countryCode = String(body.countryCode || "").toUpperCase();
+      const variantIds = Array.isArray(body.variantIds) ? body.variantIds.map((id) => String(id || "")).filter(Boolean).slice(0, 100) : [];
+      if (!/^[A-Z]{2}$/.test(countryCode)) throw new Error("Invalid country code.");
+      if (!variantIds.length) throw new Error("Missing variant IDs.");
+      const prices = await admin.contextualVariantPrices(variantIds, countryCode);
+      jsonResponse(res, 200, { ok: true, prices, countryCode });
+      return;
+    }
     if (body.action === "complete") {
       const mimeType = String(body.mimeType || "");
       const filename = String(body.filename || "");

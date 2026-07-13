@@ -11,6 +11,8 @@
     data-product-id="{{ customizer_product.id }}"
     data-variant-id="{{ customizer_product.selected_or_first_available_variant.id }}"
     data-base-price="{{ customizer_product.selected_or_first_available_variant.price | divided_by: 100.0 }}"
+    data-currency-code="{{ localization.country.currency.iso_code | default: cart.currency.iso_code | default: shop.currency }}"
+    data-country-code="{{ localization.country.iso_code | default: 'US' }}"
     data-config="{{ customizer_metafield.value | json | escape }}"
     data-upload-url="{{ block.settings.upload_path | escape }}"
   >

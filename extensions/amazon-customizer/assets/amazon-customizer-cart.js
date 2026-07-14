@@ -224,7 +224,7 @@
     const response = await fetch(`${window.Shopify.routes.root}cart.js`, { headers: { accept: "application/json" } });
     if (!response.ok) throw new Error(`Cart JSON failed (${response.status})`);
     const cart = await response.json();
-    const previewItems = (cart.items || []).filter((item) => item.properties && item.properties._customization_payload_count && !item.properties._customization_fee_component).map((item) => ({
+    const previewItems = (cart.items || []).filter((item) => item.properties && item.properties._customization_payload_count).map((item) => ({
       item,
       payload: decodePayload(item.properties)
     })).filter((entry) => entry.payload?.previewModel?.layers?.length);

@@ -192,7 +192,6 @@ async function performShopifySync(body = {}) {
   });
   const product = await admin.product(body.productId || "");
   const definition = await admin.ensureCustomizerDefinition(apply);
-  const cartTransform = await admin.ensureCartTransform(apply);
   const assetResult = await syncConfigAssets(admin, config, apply);
   config = assetResult.config;
   const variantMigration = await admin.syncPaidOptionsIntoProductVariants(product.id, migratedPaidGroups, apply);
@@ -200,9 +199,6 @@ async function performShopifySync(body = {}) {
   config.controlOrder = (config.controlOrder || []).filter((entry) => entry.type !== "option" || !paidOptionGroups.some((group) => group.id === entry.id));
   config.pricing.currencyCode = "USD";
   config.pricing.mode = "product_variants";
-  config.pricing.amounts = [];
-  config.pricing.variantIds = {};
-  config.pricing.surchargeProductId = null;
   config.pricing.paidOptionGroups = migratedPaidGroups.map((group) => ({
     id: group.id,
     label: group.label,
@@ -229,7 +225,6 @@ async function performShopifySync(body = {}) {
     apply,
     product: { id: product.id, title: product.title },
     definition,
-    cartTransform,
     assets: assetResult.assets,
     metafield,
     bytes,
@@ -329,15 +324,6 @@ async function handleShopifyUpload(req, res, requestUrl) {
           parameters: target.parameters,
         }
       });
-      return;
-    }
-    if (body.action === "pricing") {
-      const countryCode = String(body.countryCode || "").toUpperCase();
-      const variantIds = Array.isArray(body.variantIds) ? body.variantIds.map((id) => String(id || "")).filter(Boolean).slice(0, 100) : [];
-      if (!/^[A-Z]{2}$/.test(countryCode)) throw new Error("Invalid country code.");
-      if (!variantIds.length) throw new Error("Missing variant IDs.");
-      const prices = await admin.contextualVariantPrices(variantIds, countryCode);
-      jsonResponse(res, 200, { ok: true, prices, countryCode });
       return;
     }
     if (body.action === "complete") {

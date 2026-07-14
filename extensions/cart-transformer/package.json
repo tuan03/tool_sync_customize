@@ -1,9 +1,0 @@
-{
-  "name": "customization-cart-transform",
-  "private": true,
-  "type": "module",
-  "scripts": {},
-  "dependencies": {
-    "@shopify/shopify_function": "2.0.1"
-  }
-}

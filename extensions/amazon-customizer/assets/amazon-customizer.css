@@ -207,8 +207,9 @@
 .amzcustom-editor-container .tui-image-editor-help-menu.top > .tui-image-editor-item[tooltip-content="Reset"] { display: inline-block !important; }
 .amzcustom-foot { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 12px; border-top: 1px solid #ddd; background: #fff; }
 .amzcustom-price { min-width: 0; overflow-wrap: anywhere; }
-.amzcustom-price-summary { display: grid; gap: 2px; min-width: 0; }
-.amzcustom-total-price { min-width: 0; overflow-wrap: anywhere; color: #111; }
+.amzcustom-price:empty { display: none; }
+.amzcustom-price-summary { display: grid; gap: 2px; min-width: 0; align-content: center; justify-items: start; }
+.amzcustom-total-price { min-width: 0; overflow-wrap: anywhere; color: #111; line-height: 1.15; }
 .amzcustom-add { min-width: 148px; min-height: 46px; border: 1px solid #fcd200; border-radius: 999px; background: #ffd814; color: #111; font-weight: 800; cursor: pointer; }
 .amzcustom-add.is-loading { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
 .amzcustom-add.is-loading .amzcustom-spinner { width: 18px; height: 18px; border: 2px solid rgba(17,17,17,.24); border-top-color: #111; border-radius: 50%; animation: amzcustom-spin .8s linear infinite; }
@@ -254,6 +255,7 @@ body.amzcustom-locked { overflow: hidden; }
   .amzcustom-choices.is-text-choice { grid-template-columns: repeat(auto-fit,minmax(132px,1fr)); max-height: none; overflow: visible; }
   .amzcustom-options-list { display: grid; }
   .amzcustom-foot { justify-content: flex-end; gap: 16px; padding: 14px 20px; }
+  .amzcustom-price-summary { justify-items: end; text-align: right; }
   .amzcustom-add { min-width: 190px; }
 }
 @media (min-width: 1025px) {

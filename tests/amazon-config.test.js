@@ -4,7 +4,6 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const { normalizeAmazonConfig, validateMetafieldSize, replaceAssetUrls } = require("../lib/amazon-config");
-const { ShopifyAdmin } = require("../lib/shopify-admin");
 
 function appConfigFromHar(file) {
   const har = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -45,13 +44,3 @@ test("replaces regular and font asset URLs without mutation", () => {
 
 test("enforces an explicit metafield byte limit", () => assert.throws(() => validateMetafieldSize({ value: "x".repeat(100) }, 20), /limited/));
 
-test("surcharge product is product-scoped, unlisted, SEO-hidden, and preserves fee mapping", async () => {
-  const admin = new ShopifyAdmin({ shop: "unit-test.myshopify.com", token: "test-token" });
-  const result = await admin.ensureSurchargeProduct("gid://shopify/Product/12345", [5000, 10000, 5000], false);
-  assert.equal(result.input.handle, "amazon-customization-addon-12345");
-  assert.equal(result.input.title, "Customization Add-on 12345");
-  assert.equal(result.input.status, "UNLISTED");
-  assert.deepEqual(result.input.metafields, [{ namespace: "seo", key: "hidden", type: "number_integer", value: "1" }]);
-  assert.deepEqual(result.input.variants.map((variant) => variant.price), ["5000", "10000"]);
-  assert.deepEqual(Object.keys(result.variants), ["5000", "10000"]);
-});

@@ -18,9 +18,7 @@
     for (const group of config.colorGroups) if (!Array.isArray(group.options)) group.options = [];
     config.controlOrder = config.controlOrder.filter((entry) => entry && entry.type && entry.id);
     config.product ||= {};
-    config.pricing ||= { amounts: [], variantIds: {} };
-    config.pricing.amounts ||= [];
-    config.pricing.variantIds ||= {};
+    config.pricing ||= {};
     return config;
   }
 
@@ -104,29 +102,11 @@
   function currentVariantId(instance) {
     return currentVariantSelection(instance?.root).variantId;
   }
-  function sourceCurrency(instance) {
-    return String(instance?.config?.pricing?.currencyCode || resolveCurrency(instance) || "USD").toUpperCase();
-  }
-  function activeCurrency(instance) {
-    return String(resolveCurrency(instance) || "USD").toUpperCase();
-  }
-  function requiresPresentmentPricing(instance) {
-    return sourceCurrency(instance) !== activeCurrency(instance);
-  }
-  function displayAmount(instance, value) {
-    const amount = Number(value || 0);
-    if (!Number.isFinite(amount)) return 0;
-    const mapped = instance?.presentmentPrices?.[String(amount)];
-    return Number.isFinite(mapped) ? mapped : amount;
-  }
   function surcharge(instance) {
     return (instance.config.optionGroups || []).reduce((total, group) => total + (selected(group, instance.state)?.cost || 0), 0);
   }
-  function displaySurcharge(instance) {
-    return (instance.config.optionGroups || []).reduce((total, group) => total + displayAmount(instance, selected(group, instance.state)?.cost || 0), 0);
-  }
   function totalPrice(instance) {
-    return basePrice(instance) + displaySurcharge(instance);
+    return basePrice(instance) + surcharge(instance);
   }
   function nowMs() {
     return performance.now();
@@ -501,47 +481,6 @@
   }
   function asset(url) { return url || ""; }
   function selected(group, state) { return (Array.isArray(group.options) ? group.options : []).find((option) => option.id === state.options[group.id]); }
-  async function ensurePresentmentPricing(instance) {
-    if (!instance || !requiresPresentmentPricing(instance)) return;
-    if (instance.presentmentLoaded) return;
-    if (instance.presentmentPromise) return instance.presentmentPromise;
-    const variantIds = Object.values(instance.config?.pricing?.variantIds || {}).filter(Boolean);
-    const countryCode = String(instance.root?.dataset?.countryCode || "US").toUpperCase();
-    if (!variantIds.length || !/^[A-Z]{2}$/.test(countryCode)) {
-      instance.presentmentLoaded = true;
-      return;
-    }
-    instance.presentmentPromise = (async () => {
-      try {
-        const response = await fetch(instance.root.dataset.uploadUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: "pricing", countryCode, variantIds })
-        });
-        if (!response.ok) throw new Error(`Presentment pricing failed (${response.status})`);
-        const payload = await response.json();
-        const pricesByVariantId = payload?.prices || {};
-        const amounts = {};
-        for (const [amount, variantId] of Object.entries(instance.config?.pricing?.variantIds || {})) {
-          const mapped = Number(pricesByVariantId[variantId]?.amount);
-          if (Number.isFinite(mapped) && mapped > 0) amounts[String(Number(amount))] = mapped;
-        }
-        instance.presentmentPrices = amounts;
-      } catch (error) {
-        console.warn("[Amazon Customizer] Presentment pricing fallback to source currency amounts", {
-          countryCode,
-          sourceCurrency: sourceCurrency(instance),
-          activeCurrency: activeCurrency(instance),
-          error: error?.message || String(error)
-        });
-      } finally {
-        instance.presentmentLoaded = true;
-        instance.presentmentPromise = null;
-        if (!instance.modal.hidden) renderControls(instance);
-      }
-    })();
-    return instance.presentmentPromise;
-  }
   function box(config, placementId, state) {
     const placement = (config.placements || []).find((item) => item.id === placementId);
     const size = config.product.previewSize || 400;
@@ -659,7 +598,7 @@
     if (surface?.maskImage?.url) stage.insertAdjacentHTML("beforeend", `<img class="amzcustom-stage-mask" alt="" src="${escapeHtml(asset(surface.maskImage.url))}">`);
     bindPreviewDrag(instance);
     syncEditBoxes(stage);
-    q(instance.modal, ".amzcustom-price").textContent = `Surcharge: ${formatMoney(displaySurcharge(instance), instance)}`;
+    q(instance.modal, ".amzcustom-price").textContent = "";
     q(instance.modal, ".amzcustom-total-price").textContent = `Total: ${formatMoney(totalPrice(instance), instance)}`;
   }
   function bindPreviewDrag(instance) {
@@ -826,7 +765,7 @@
     const optionItems = !item.required ? [{ id: "", label: "No selection", cost: 0, noSelection: true }, ...visibleOptions] : visibleOptions;
     const choices = optionItems.map((option) => {
       const img = option.thumbnailImage || option.overlayImage;
-      return `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="primary" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-stock-icon"></span>`}<span>${escapeHtml(option.label)}</span>${option.outOfStock ? "<small>Out of stock</small>" : option.cost ? `<small>+${formatMoney(displayAmount(instance, option.cost), instance)}</small>` : ""}</button>`;
+      return `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="primary" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-stock-icon"></span>`}<span>${escapeHtml(option.label)}</span>${option.outOfStock ? "<small>Out of stock</small>" : option.cost ? `<small>+${formatMoney(option.cost, instance)}</small>` : ""}</button>`;
     }).join("");
     const toggle = shouldCollapse ? `<button type="button" class="amzcustom-options-toggle" data-options-toggle="${escapeHtml(item.id)}">${expanded ? "See less" : `See all ${item.options.length} options`}</button>` : "";
     const primaryIds = new Set(primaryOptions.map((option) => option.id));
@@ -842,7 +781,7 @@
       const hasImages = item.options.some((option) => option.thumbnailImage || option.overlayImage);
       const selectedValue = item.options.find((option) => option.id === state.options[item.id])?.label || "";
       if (item.displayHint === "choice-grid" || hasImages || isYesNoGroup(item) || isSizeChoiceGroup(item) || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control ${state.errors[item.id] ? "is-invalid" : ""}" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(instance, state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
-      return `<section class="amzcustom-control ${state.errors[item.id] ? "is-invalid" : ""}" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(displayAmount(instance, option.cost), instance)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      return `<section class="amzcustom-control ${state.errors[item.id] ? "is-invalid" : ""}" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(option.cost, instance)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
     if (type === "text") {
       const value = state.texts[item.id] || "";
@@ -1421,7 +1360,6 @@
     const properties = {
       Customization: summary,
       "_customization_id": customizationId,
-      "_customization_fee": String(payload.surcharge),
       "_customization_options": JSON.stringify(instance.state.options),
       "_customization_schema": String(instance.config.schemaVersion),
       "_customization_payload_encoding": "base64-json",
@@ -1455,8 +1393,7 @@
       stageLog("Add customized item context", {
         variantId: currentVariantId(instance),
         imageCount: imageEntries.length,
-        surcharge: displaySurcharge(instance),
-        rawSurcharge: surcharge(instance),
+        surcharge: surcharge(instance),
         basePrice: basePrice(instance),
         totalPrice: totalPrice(instance)
       });
@@ -1480,12 +1417,6 @@
         payloadBytes: JSON.stringify(payload).length,
         previewLayers: payload.previewModel?.layers?.length || 0
       });
-      
-      try {
-        const surchargeCents = Math.round(surcharge(instance) * 100);
-        localStorage.setItem("amzcustom_surcharge_" + currentVariantId(instance), String(surchargeCents));
-      } catch (e) {
-      }
       
       const properties = customizationProperties(instance, customizationId, payload);
       const selectedVariantId = currentVariantId(instance);
@@ -1550,8 +1481,7 @@
     for(const group of config.fontGroups||[])for(const font of group.options||[])ensureFontLoaded(font);
     const modal = document.createElement("div"); modal.className="amzcustom-modal"; modal.hidden=true;
     modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><div class="amzcustom-price-summary"><strong class="amzcustom-price"></strong><strong class="amzcustom-total-price"></strong></div><button class="amzcustom-add">Add customized item</button></footer></section>`;
-    document.body.appendChild(modal); const instance={root,modal,config,state:initialState(config),presentmentPrices:{},presentmentLoaded:false,presentmentPromise:null}; instances.set(root,instance);
-    ensurePresentmentPricing(instance);
+    document.body.appendChild(modal); const instance={root,modal,config,state:initialState(config)}; instances.set(root,instance);
     q(root,".amzcustom-open").addEventListener("click",()=>{ modal.hidden=false; document.body.classList.add("amzcustom-locked"); renderControls(instance); scheduleFontReadyRender(instance); });
     const close=()=>{modal.hidden=true;document.body.classList.remove("amzcustom-locked");}; q(modal,".amzcustom-close").addEventListener("click",close); q(modal,".amzcustom-backdrop").addEventListener("click",close); q(modal,".amzcustom-add").addEventListener("click",()=>finish(instance));
     const form = root.closest('form[action*="/cart/add"]');
@@ -1561,7 +1491,6 @@
         if (variantId) {
           try {
             localStorage.removeItem("amzcustom_preview_" + variantId);
-            localStorage.removeItem("amzcustom_surcharge_" + variantId);
             localStorage.removeItem("amzcustom_unit_price_" + variantId);
           } catch (e) {}
         }

@@ -160,86 +160,125 @@ async function handleAdminStatus(req, res) {
   });
 }
 
+function assertAdminAuthorized(req) {
+  if (process.env.CUSTOMIZER_ADMIN_SECRET && req.headers.authorization !== `Bearer ${process.env.CUSTOMIZER_ADMIN_SECRET}`) {
+    throw new Error("Unauthorized admin request.");
+  }
+}
+
+async function performShopifySync(body = {}) {
+  const apply = body.apply === true;
+  const admin = new ShopifyAdmin();
+  let config = body.normalizedConfig || normalizeAmazonConfig(body.config, body.sourceUrl || "");
+  config = JSON.parse(JSON.stringify(config));
+  const hasFractionalAmounts = config.pricing.amounts.some((amount) => !Number.isInteger(Number(amount)));
+  const priceMultiplier = Number(body.priceMultiplier);
+  if (hasFractionalAmounts && (!Number.isFinite(priceMultiplier) || priceMultiplier <= 0)) {
+    throw new Error("Amazon surcharge contains decimal amounts. Enter an explicit price multiplier before Sync if your Shopify variant pricing needs conversion.");
+  }
+  if (Number.isFinite(priceMultiplier) && priceMultiplier > 0 && priceMultiplier !== 1) {
+    for (const group of config.optionGroups) for (const option of group.options) option.cost = Math.round(Number(option.cost || 0) * priceMultiplier);
+    config.pricing.amounts = [...new Set(config.optionGroups.flatMap((group) => group.options.map((option) => option.cost)).filter((amount) => amount > 0))].sort((a, b) => a - b);
+    config.pricing.sourceMultiplier = priceMultiplier;
+  }
+  const paidOptionGroups = config.optionGroups.filter((group) => (group.options || []).some((option) => Number(option.cost || 0) > 0));
+  const freeOptionGroups = config.optionGroups.filter((group) => !paidOptionGroups.includes(group));
+  const migratedPaidGroups = paidOptionGroups.map((group) => {
+    const options = [...(group.options || [])];
+    if (!group.required && !options.some((option) => Number(option.cost || 0) === 0)) {
+      options.unshift({ id: `${group.id}__none`, label: "None", cost: 0, overlayImage: null, thumbnailImage: null });
+    }
+    return { ...group, variantOptions: options };
+  });
+  const product = await admin.product(body.productId || "");
+  const definition = await admin.ensureCustomizerDefinition(apply);
+  const cartTransform = await admin.ensureCartTransform(apply);
+  const assetResult = await syncConfigAssets(admin, config, apply);
+  config = assetResult.config;
+  const variantMigration = await admin.syncPaidOptionsIntoProductVariants(product.id, migratedPaidGroups, apply);
+  config.optionGroups = freeOptionGroups;
+  config.controlOrder = (config.controlOrder || []).filter((entry) => entry.type !== "option" || !paidOptionGroups.some((group) => group.id === entry.id));
+  config.pricing.currencyCode = "USD";
+  config.pricing.mode = "product_variants";
+  config.pricing.amounts = [];
+  config.pricing.variantIds = {};
+  config.pricing.surchargeProductId = null;
+  config.pricing.paidOptionGroups = migratedPaidGroups.map((group) => ({
+    id: group.id,
+    label: group.label,
+    required: Boolean(group.required),
+    options: (group.variantOptions || []).map((option) => ({
+      id: option.id,
+      label: option.label,
+      cost: Number(option.cost || 0),
+    })),
+  }));
+  const bytes = byteSize(config);
+  let metafieldConfig = config;
+  let externalConfig = null;
+  if (bytes > MAX_METAFIELD_BYTES) {
+    const externalFile = await ensureExternalConfigFile(admin, product, config, apply);
+    metafieldConfig = compactCustomizerConfig(config, externalFile.url, bytes);
+    const metafieldBytes = byteSize(metafieldConfig);
+    if (metafieldBytes > MAX_METAFIELD_BYTES) throw new Error(`Compact customizer metafield is still too large (${metafieldBytes} bytes).`);
+    externalConfig = { enabled: true, file: externalFile, metafieldBytes };
+  }
+  const metafield = await admin.setCustomizer(product.id, metafieldConfig, apply);
+  return {
+    ok: true,
+    apply,
+    product: { id: product.id, title: product.title },
+    definition,
+    cartTransform,
+    assets: assetResult.assets,
+    metafield,
+    bytes,
+    externalConfig,
+    pricing: {
+      currency: "USD",
+      mode: "product_variants",
+      paidOptionGroups: config.pricing.paidOptionGroups,
+      variantMigration,
+    }
+  };
+}
+
 async function handleShopifySync(req, res) {
   try {
-    if (process.env.CUSTOMIZER_ADMIN_SECRET && req.headers.authorization !== `Bearer ${process.env.CUSTOMIZER_ADMIN_SECRET}`) throw new Error("Unauthorized admin request.");
+    assertAdminAuthorized(req);
     const body = JSON.parse(await readRequestBody(req) || "{}");
-    const apply = body.apply === true;
-    const admin = new ShopifyAdmin();
-    let config = body.normalizedConfig || normalizeAmazonConfig(body.config, body.sourceUrl || "");
-    config = JSON.parse(JSON.stringify(config));
-    const hasFractionalAmounts = config.pricing.amounts.some((amount) => !Number.isInteger(Number(amount)));
-    const priceMultiplier = Number(body.priceMultiplier);
-    if (hasFractionalAmounts && (!Number.isFinite(priceMultiplier) || priceMultiplier <= 0)) {
-      throw new Error("Amazon surcharge contains decimal amounts. Enter an explicit price multiplier before Sync if your Shopify variant pricing needs conversion.");
-    }
-    if (Number.isFinite(priceMultiplier) && priceMultiplier > 0 && priceMultiplier !== 1) {
-      for (const group of config.optionGroups) for (const option of group.options) option.cost = Math.round(Number(option.cost || 0) * priceMultiplier);
-      config.pricing.amounts = [...new Set(config.optionGroups.flatMap((group) => group.options.map((option) => option.cost)).filter((amount) => amount > 0))].sort((a, b) => a - b);
-      config.pricing.sourceMultiplier = priceMultiplier;
-    }
-    const paidOptionGroups = config.optionGroups.filter((group) => (group.options || []).some((option) => Number(option.cost || 0) > 0));
-    const freeOptionGroups = config.optionGroups.filter((group) => !paidOptionGroups.includes(group));
-    const migratedPaidGroups = paidOptionGroups.map((group) => {
-      const options = [...(group.options || [])];
-      if (!group.required && !options.some((option) => Number(option.cost || 0) === 0)) {
-        options.unshift({ id: `${group.id}__none`, label: "None", cost: 0, overlayImage: null, thumbnailImage: null });
-      }
-      return { ...group, variantOptions: options };
-    });
-    const product = await admin.product(body.productId || "");
-    const definition = await admin.ensureCustomizerDefinition(apply);
-    const cartTransform = await admin.ensureCartTransform(apply);
-    const assetResult = await syncConfigAssets(admin, config, apply);
-    config = assetResult.config;
-    const variantMigration = await admin.syncPaidOptionsIntoProductVariants(product.id, migratedPaidGroups, apply);
-    config.optionGroups = freeOptionGroups;
-    config.controlOrder = (config.controlOrder || []).filter((entry) => entry.type !== "option" || !paidOptionGroups.some((group) => group.id === entry.id));
-    config.pricing.currencyCode = "USD";
-    config.pricing.mode = "product_variants";
-    config.pricing.amounts = [];
-    config.pricing.variantIds = {};
-    config.pricing.surchargeProductId = null;
-    config.pricing.paidOptionGroups = migratedPaidGroups.map((group) => ({
-      id: group.id,
-      label: group.label,
-      required: Boolean(group.required),
-      options: (group.variantOptions || []).map((option) => ({
-        id: option.id,
-        label: option.label,
-        cost: Number(option.cost || 0),
-      })),
-    }));
-    const bytes = byteSize(config);
-    let metafieldConfig = config;
-    let externalConfig = null;
-    if (bytes > MAX_METAFIELD_BYTES) {
-      const externalFile = await ensureExternalConfigFile(admin, product, config, apply);
-      metafieldConfig = compactCustomizerConfig(config, externalFile.url, bytes);
-      const metafieldBytes = byteSize(metafieldConfig);
-      if (metafieldBytes > MAX_METAFIELD_BYTES) throw new Error(`Compact customizer metafield is still too large (${metafieldBytes} bytes).`);
-      externalConfig = { enabled: true, file: externalFile, metafieldBytes };
-    }
-    const metafield = await admin.setCustomizer(product.id, metafieldConfig, apply);
-    jsonResponse(res, 200, {
-      ok: true,
-      apply,
-      product: { id: product.id, title: product.title },
-      definition,
-      cartTransform,
-      assets: assetResult.assets,
-      metafield,
-      bytes,
-      externalConfig,
-      pricing: {
-        currency: "USD",
-        mode: "product_variants",
-        paidOptionGroups: config.pricing.paidOptionGroups,
-        variantMigration,
-      }
-    });
+    const result = await performShopifySync(body);
+    jsonResponse(res, 200, result);
   } catch (error) {
     jsonResponse(res, 400, { ok: false, error: error.message });
+  }
+}
+
+async function handleShopifySyncApi(req, res) {
+  try {
+    assertAdminAuthorized(req);
+    const body = JSON.parse(await readRequestBody(req) || "{}");
+    if (!body.productId) throw new Error("Missing productId.");
+    if (!body.rawAmazonJson && !body.config && !body.normalizedConfig) throw new Error("Missing rawAmazonJson.");
+    const result = await performShopifySync({
+      productId: body.productId,
+      config: body.rawAmazonJson || body.config,
+      normalizedConfig: body.normalizedConfig,
+      sourceUrl: body.sourceUrl || "",
+      priceMultiplier: body.priceMultiplier,
+      apply: true,
+    });
+    jsonResponse(res, 200, {
+      ok: true,
+      message: `Sync successful for product ${result.product.title}.`,
+      result,
+    });
+  } catch (error) {
+    jsonResponse(res, 400, {
+      ok: false,
+      message: "Sync failed.",
+      error: error.message,
+    });
   }
 }
 
@@ -1159,6 +1198,11 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && requestUrl.pathname === "/api/shopify/sync") {
     handleShopifySync(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/api/shopify/sync-api") {
+    handleShopifySyncApi(req, res);
     return;
   }
 

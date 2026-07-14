@@ -178,15 +178,38 @@ async function handleShopifySync(req, res) {
       config.pricing.amounts = [...new Set(config.optionGroups.flatMap((group) => group.options.map((option) => option.cost)).filter((amount) => amount > 0))].sort((a, b) => a - b);
       config.pricing.sourceMultiplier = priceMultiplier;
     }
+    const paidOptionGroups = config.optionGroups.filter((group) => (group.options || []).some((option) => Number(option.cost || 0) > 0));
+    const freeOptionGroups = config.optionGroups.filter((group) => !paidOptionGroups.includes(group));
+    const migratedPaidGroups = paidOptionGroups.map((group) => {
+      const options = [...(group.options || [])];
+      if (!group.required && !options.some((option) => Number(option.cost || 0) === 0)) {
+        options.unshift({ id: `${group.id}__none`, label: "None", cost: 0, overlayImage: null, thumbnailImage: null });
+      }
+      return { ...group, variantOptions: options };
+    });
     const product = await admin.product(body.productId || "");
     const definition = await admin.ensureCustomizerDefinition(apply);
     const cartTransform = await admin.ensureCartTransform(apply);
     const assetResult = await syncConfigAssets(admin, config, apply);
     config = assetResult.config;
-    const surcharge = await admin.ensureSurchargeProduct(product.id, config.pricing.amounts, apply);
+    const variantMigration = await admin.syncPaidOptionsIntoProductVariants(product.id, migratedPaidGroups, apply);
+    config.optionGroups = freeOptionGroups;
+    config.controlOrder = (config.controlOrder || []).filter((entry) => entry.type !== "option" || !paidOptionGroups.some((group) => group.id === entry.id));
     config.pricing.currencyCode = "USD";
-    config.pricing.surchargeProductId = surcharge.productId || null;
-    config.pricing.variantIds = surcharge.variants || {};
+    config.pricing.mode = "product_variants";
+    config.pricing.amounts = [];
+    config.pricing.variantIds = {};
+    config.pricing.surchargeProductId = null;
+    config.pricing.paidOptionGroups = migratedPaidGroups.map((group) => ({
+      id: group.id,
+      label: group.label,
+      required: Boolean(group.required),
+      options: (group.variantOptions || []).map((option) => ({
+        id: option.id,
+        label: option.label,
+        cost: Number(option.cost || 0),
+      })),
+    }));
     const bytes = byteSize(config);
     let metafieldConfig = config;
     let externalConfig = null;
@@ -198,7 +221,23 @@ async function handleShopifySync(req, res) {
       externalConfig = { enabled: true, file: externalFile, metafieldBytes };
     }
     const metafield = await admin.setCustomizer(product.id, metafieldConfig, apply);
-    jsonResponse(res, 200, { ok: true, apply, product: { id: product.id, title: product.title }, definition, cartTransform, assets: assetResult.assets, metafield, bytes, externalConfig, pricing: { currency: "USD", amounts: config.pricing.amounts, surcharge } });
+    jsonResponse(res, 200, {
+      ok: true,
+      apply,
+      product: { id: product.id, title: product.title },
+      definition,
+      cartTransform,
+      assets: assetResult.assets,
+      metafield,
+      bytes,
+      externalConfig,
+      pricing: {
+        currency: "USD",
+        mode: "product_variants",
+        paidOptionGroups: config.pricing.paidOptionGroups,
+        variantMigration,
+      }
+    });
   } catch (error) {
     jsonResponse(res, 400, { ok: false, error: error.message });
   }

@@ -78,9 +78,31 @@
       return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
     }
   }
+  function variantPickerRoot(root) {
+    const productId = String(root?.dataset?.productId || "");
+    return (
+      (productId && document.querySelector(`variant-picker[data-product-id="${CSS.escape(productId)}"]`)) ||
+      root.closest(".shopify-section, featured-product-information, main")?.querySelector("variant-picker") ||
+      null
+    );
+  }
+  function currentVariantSelection(root) {
+    const picker = variantPickerRoot(root);
+    const source = picker?.querySelector('input[type="radio"]:checked[data-variant-id], select option:checked[data-variant-id]');
+    const variantId = source?.dataset?.variantId || root?.dataset?.variantId || "";
+    const variantPrice = Number(source?.dataset?.variantPrice);
+    const basePrice = Number.isFinite(variantPrice) ? variantPrice / 100 : Number(root?.dataset?.basePrice || 0);
+    return {
+      variantId: String(variantId || ""),
+      basePrice: Number.isFinite(basePrice) ? basePrice : 0,
+    };
+  }
   function basePrice(instance) {
-    const value = Number(instance?.root?.dataset?.basePrice || 0);
+    const value = currentVariantSelection(instance?.root).basePrice;
     return Number.isFinite(value) ? value : 0;
+  }
+  function currentVariantId(instance) {
+    return currentVariantSelection(instance?.root).variantId;
   }
   function sourceCurrency(instance) {
     return String(instance?.config?.pricing?.currencyCode || resolveCurrency(instance) || "USD").toUpperCase();
@@ -1334,7 +1356,7 @@
       customizationId,
       schemaVersion: instance.config.schemaVersion,
       productId: instance.root.dataset.productId,
-      variantId: instance.root.dataset.variantId,
+      variantId: currentVariantId(instance),
       createdAt: new Date().toISOString(),
       surcharge: surcharge(instance),
       previewModel: buildPreviewModel(instance, uploadedImages),
@@ -1421,7 +1443,7 @@
     const startedAt = performance.now();
     const startedAtIso = new Date().toISOString();
     console.log("[Amazon Customizer] Add customized item started", {
-      variantId: instance.root.dataset.variantId,
+      variantId: currentVariantId(instance),
       productId: instance.root.dataset.productId,
       startedAt: startedAtIso
     });
@@ -1431,7 +1453,7 @@
     try {
       const imageEntries = Object.entries(instance.state.images);
       stageLog("Add customized item context", {
-        variantId: instance.root.dataset.variantId,
+        variantId: currentVariantId(instance),
         imageCount: imageEntries.length,
         surcharge: displaySurcharge(instance),
         rawSurcharge: surcharge(instance),
@@ -1461,15 +1483,14 @@
       
       try {
         const surchargeCents = Math.round(surcharge(instance) * 100);
-        localStorage.setItem("amzcustom_surcharge_" + instance.root.dataset.variantId, String(surchargeCents));
+        localStorage.setItem("amzcustom_surcharge_" + currentVariantId(instance), String(surchargeCents));
       } catch (e) {
       }
       
       const properties = customizationProperties(instance, customizationId, payload);
-      const items = [{ id:Number(instance.root.dataset.variantId), quantity:1, properties }];
-      
-      const feeCounts={}; for(const group of instance.config.optionGroups){const option=selected(group,instance.state);if(option?.cost>0)feeCounts[option.cost]=(feeCounts[option.cost]||0)+1;}
-      for(const [amount,quantity] of Object.entries(feeCounts)){const gid=instance.config.pricing.variantIds?.[amount];if(!gid)throw new Error(`Missing add-on variant for surcharge ${formatMoney(amount, instance)}. Please sync the product again.`);items.push({id:Number(String(gid).split("/").pop()),parent_id:Number(instance.root.dataset.variantId),quantity,properties:{"_customization_id":customizationId,"_customization_parent_variant":instance.root.dataset.variantId,"_customization_fee_component":amount}});}
+      const selectedVariantId = currentVariantId(instance);
+      if (!selectedVariantId) throw new Error("Please choose a product variant before customizing.");
+      const items = [{ id:Number(selectedVariantId), quantity:1, properties }];
       
       const cartAddStartedAt = nowMs();
       const addResponse = await fetch(`${window.Shopify.routes.root}cart/add.js`, { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({items}) });
@@ -1485,7 +1506,7 @@
       const finishedAt = performance.now();
       const elapsedSeconds = Number(((finishedAt - startedAt) / 1000).toFixed(2));
       console.log("[Amazon Customizer] Add customized item completed", {
-        variantId: instance.root.dataset.variantId,
+        variantId: selectedVariantId,
         customizationId,
         elapsedSeconds
       });
@@ -1493,7 +1514,7 @@
         sessionStorage.setItem("amzcustom_last_add_timing", JSON.stringify({
           startedAt: startedAtIso,
           elapsedSeconds,
-          variantId: instance.root.dataset.variantId,
+          variantId: selectedVariantId,
           customizationId
         }));
       } catch (e) {
@@ -1502,7 +1523,7 @@
     } catch (error) {
       const failedAt = performance.now();
       console.warn("[Amazon Customizer] Add customized item failed", {
-        variantId: instance.root.dataset.variantId,
+        variantId: currentVariantId(instance),
         elapsedSeconds: Number(((failedAt - startedAt) / 1000).toFixed(2)),
         error: error?.message || String(error)
       });

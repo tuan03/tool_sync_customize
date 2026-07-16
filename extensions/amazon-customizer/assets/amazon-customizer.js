@@ -84,12 +84,56 @@
       null
     );
   }
+  function variantSelectsRoot(root) {
+    const productId = String(root?.dataset?.productId || "");
+    return (
+      (productId && document.querySelector(`variant-selects[data-product-id="${CSS.escape(productId)}"]`)) ||
+      root.closest("product-info, .shopify-section, featured-product-information, main")?.querySelector("variant-selects") ||
+      null
+    );
+  }
+  function productFormRoot(root) {
+    return (
+      root.closest("product-info, .shopify-section, featured-product-information, main")?.querySelector('form[action*="/cart/add"]') ||
+      root.closest('form[action*="/cart/add"]') ||
+      null
+    );
+  }
+  function parseSelectedVariantJson(root) {
+    const variantSelects = variantSelectsRoot(root);
+    const script = variantSelects?.querySelector("[data-selected-variant]");
+    if (!script?.textContent) return null;
+    try {
+      return JSON.parse(script.textContent);
+    } catch (_error) {
+      return null;
+    }
+  }
   function currentVariantSelection(root) {
+    const form = productFormRoot(root);
+    const variantInput = form?.querySelector('input[name="id"]');
+    const variantIdFromForm = String(variantInput?.value || "");
+    const selectedVariant = parseSelectedVariantJson(root);
     const picker = variantPickerRoot(root);
     const source = picker?.querySelector('input[type="radio"]:checked[data-variant-id], select option:checked[data-variant-id]');
-    const variantId = source?.dataset?.variantId || root?.dataset?.variantId || "";
-    const variantPrice = Number(source?.dataset?.variantPrice);
-    const basePrice = Number.isFinite(variantPrice) ? variantPrice / 100 : Number(root?.dataset?.basePrice || 0);
+    const variantId = variantIdFromForm || String(selectedVariant?.id || "") || source?.dataset?.variantId || root?.dataset?.variantId || "";
+    const variantPrice = Number(selectedVariant?.price);
+    const legacyVariantPrice = Number(source?.dataset?.variantPrice);
+    const basePrice = Number.isFinite(variantPrice)
+      ? variantPrice / 100
+      : Number.isFinite(legacyVariantPrice)
+        ? legacyVariantPrice / 100
+        : Number(root?.dataset?.basePrice || 0);
+    stageLog("Current variant selection resolved", {
+      productId: root?.dataset?.productId || "",
+      variantIdFromForm,
+      variantIdFromSelectedVariantJson: String(selectedVariant?.id || ""),
+      variantIdFromLegacyPicker: String(source?.dataset?.variantId || ""),
+      resolvedVariantId: variantId,
+      variantPriceFromSelectedVariantJson: Number.isFinite(variantPrice) ? variantPrice : null,
+      variantPriceFromLegacyPicker: Number.isFinite(legacyVariantPrice) ? legacyVariantPrice : null,
+      resolvedBasePrice: Number.isFinite(basePrice) ? basePrice : Number(root?.dataset?.basePrice || 0)
+    });
     return {
       variantId: String(variantId || ""),
       basePrice: Number.isFinite(basePrice) ? basePrice : 0,

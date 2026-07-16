@@ -1371,6 +1371,105 @@
     });
     return properties;
   }
+  function resetAddButton(instance) {
+    const add = q(instance?.modal, ".amzcustom-add");
+    if (!add) return;
+    add.disabled = false;
+    add.classList.remove("is-loading");
+    add.textContent = "Add to cart";
+  }
+  function closeModal(instance) {
+    if (!instance?.modal) return;
+    instance.modal.hidden = true;
+    document.body.classList.remove("amzcustom-locked");
+  }
+  function resetInstanceUi(instance, reason = "manual") {
+    if (!instance) return;
+    closeModal(instance);
+    resetAddButton(instance);
+    stageLog("Customizer UI reset", {
+      reason,
+      productId: instance.root?.dataset?.productId || "",
+      variantId: currentVariantId(instance)
+    });
+  }
+  function resetAllCustomizerUis(reason = "manual") {
+    document.querySelectorAll("[data-amzcustom-root]").forEach((root) => {
+      const instance = instances.get(root);
+      if (instance) resetInstanceUi(instance, reason);
+    });
+  }
+  function getCartDrawer() {
+    const drawer = document.querySelector("cart-drawer");
+    return drawer instanceof HTMLElement ? drawer : null;
+  }
+  function getCartDrawerSectionIds(drawer) {
+    if (!drawer || typeof drawer.getSectionsToRender !== "function") return [];
+    return [...new Set((drawer.getSectionsToRender() || []).map((section) => String(section?.id || "")).filter(Boolean))];
+  }
+  function extractSectionInnerHtml(html, selector = ".shopify-section") {
+    if (typeof html !== "string") return "";
+    return new DOMParser().parseFromString(html, "text/html").querySelector(selector)?.innerHTML || "";
+  }
+  async function fetchCartSections(sectionIds) {
+    const uniqueSectionIds = [...new Set(sectionIds.filter(Boolean))];
+    if (!uniqueSectionIds.length) return {};
+    const url = new URL(`${window.Shopify.routes.root}cart`, window.location.origin);
+    url.searchParams.set("sections", uniqueSectionIds.join(","));
+    url.searchParams.set("_", String(Date.now()));
+    stageLog("Cart sections refresh started", {
+      sectionIds: uniqueSectionIds,
+      url: url.toString()
+    });
+    const response = await fetch(url.toString(), {
+      cache: "no-store",
+      headers: { accept: "application/json" }
+    });
+    if (!response.ok) throw new Error(`Cart sections refresh failed (${response.status})`);
+    const sections = await response.json();
+    stageLog("Cart sections refresh completed", {
+      sectionIds: uniqueSectionIds,
+      sectionKeys: sections && typeof sections === "object" ? Object.keys(sections) : []
+    });
+    return sections;
+  }
+  async function refreshCartUiFromServer(reason = "manual") {
+    const drawer = getCartDrawer();
+    const sectionIds = getCartDrawerSectionIds(drawer);
+    if (!sectionIds.includes("cart-icon-bubble")) sectionIds.push("cart-icon-bubble");
+    if (drawer && !sectionIds.includes("cart-drawer")) sectionIds.push("cart-drawer");
+    if (!sectionIds.length) return;
+
+    try {
+      const sections = await fetchCartSections(sectionIds);
+      stageLog("Cart UI refresh applying", {
+        reason,
+        hasDrawer: Boolean(drawer),
+        sectionKeys: Object.keys(sections || {})
+      });
+
+      if (drawer && typeof drawer.renderContents === "function" && typeof sections["cart-drawer"] === "string") {
+        drawer.renderContents({ id: drawer.productId || null, sections }, { openDrawer: false });
+      } else {
+        const bubble = document.getElementById("cart-icon-bubble");
+        if (bubble && typeof sections["cart-icon-bubble"] === "string") {
+          bubble.innerHTML = extractSectionInnerHtml(sections["cart-icon-bubble"], ".shopify-section");
+        }
+      }
+
+      const drawerItemNodes = drawer?.querySelectorAll?.('[id^="CartDrawer-Item-"]')?.length || 0;
+      stageLog("Cart UI refresh applied", {
+        reason,
+        drawerItemNodes,
+        bubbleText: document.getElementById("cart-icon-bubble")?.textContent?.trim()?.slice(0, 80) || ""
+      });
+    } catch (error) {
+      console.warn("[Amazon Customizer] Cart UI refresh failed", {
+        reason,
+        error: error?.message || String(error)
+      });
+    }
+  }
   async function finish(instance) {
     if (!validate(instance)) {
       renderControls(instance, { preserveScroll: false });
@@ -1450,6 +1549,7 @@
         }));
       } catch (e) {
       }
+      resetInstanceUi(instance, "before-cart-redirect");
       window.location.href = `${window.Shopify.routes.root}cart`;
     } catch (error) {
       const failedAt = performance.now();
@@ -1459,9 +1559,7 @@
         error: error?.message || String(error)
       });
       alert(error.message);
-      add.disabled = false;
-      add.classList.remove("is-loading");
-      add.textContent = "Add customized item";
+      resetAddButton(instance);
     }
   }
   async function create(root) {
@@ -1480,10 +1578,10 @@
     if (!config || instances.has(root)) return;
     for(const group of config.fontGroups||[])for(const font of group.options||[])ensureFontLoaded(font);
     const modal = document.createElement("div"); modal.className="amzcustom-modal"; modal.hidden=true;
-    modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><div class="amzcustom-price-summary"><strong class="amzcustom-price"></strong><strong class="amzcustom-total-price"></strong></div><button class="amzcustom-add">Add customized item</button></footer></section>`;
+    modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><div class="amzcustom-price-summary"><strong class="amzcustom-price"></strong><strong class="amzcustom-total-price"></strong></div><button class="amzcustom-add">Add to cart</button></footer></section>`;
     document.body.appendChild(modal); const instance={root,modal,config,state:initialState(config)}; instances.set(root,instance);
     q(root,".amzcustom-open").addEventListener("click",()=>{ modal.hidden=false; document.body.classList.add("amzcustom-locked"); renderControls(instance); scheduleFontReadyRender(instance); });
-    const close=()=>{modal.hidden=true;document.body.classList.remove("amzcustom-locked");}; q(modal,".amzcustom-close").addEventListener("click",close); q(modal,".amzcustom-backdrop").addEventListener("click",close); q(modal,".amzcustom-add").addEventListener("click",()=>finish(instance));
+    q(modal,".amzcustom-close").addEventListener("click",()=>closeModal(instance)); q(modal,".amzcustom-backdrop").addEventListener("click",()=>closeModal(instance)); q(modal,".amzcustom-add").addEventListener("click",()=>finish(instance));
     const form = root.closest('form[action*="/cart/add"]');
     if (form) {
       form.addEventListener("submit", () => {
@@ -1498,4 +1596,13 @@
     }
   }
   document.querySelectorAll("[data-amzcustom-root]").forEach(create);
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+      resetAllCustomizerUis("pageshow-persisted");
+      refreshCartUiFromServer("pageshow-persisted");
+    }
+  });
+  window.addEventListener("pagehide", () => {
+    resetAllCustomizerUis("pagehide");
+  });
 })();

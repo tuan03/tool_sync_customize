@@ -1,5 +1,6 @@
 (function () {
   "use strict";
+  const MINI_CART_DEBUG_VERSION = "mini-cart-fix-2026-07-16-v1";
   const instances = new WeakMap();
   const loadedFonts = new Set();
   let imageEditorAssetsPromise = null;
@@ -124,16 +125,6 @@
       : Number.isFinite(legacyVariantPrice)
         ? legacyVariantPrice / 100
         : Number(root?.dataset?.basePrice || 0);
-    stageLog("Current variant selection resolved", {
-      productId: root?.dataset?.productId || "",
-      variantIdFromForm,
-      variantIdFromSelectedVariantJson: String(selectedVariant?.id || ""),
-      variantIdFromLegacyPicker: String(source?.dataset?.variantId || ""),
-      resolvedVariantId: variantId,
-      variantPriceFromSelectedVariantJson: Number.isFinite(variantPrice) ? variantPrice : null,
-      variantPriceFromLegacyPicker: Number.isFinite(legacyVariantPrice) ? legacyVariantPrice : null,
-      resolvedBasePrice: Number.isFinite(basePrice) ? basePrice : Number(root?.dataset?.basePrice || 0)
-    });
     return {
       variantId: String(variantId || ""),
       basePrice: Number.isFinite(basePrice) ? basePrice : 0,
@@ -158,8 +149,19 @@
   function secondsSince(startedAt) {
     return Number(((nowMs() - startedAt) / 1000).toFixed(2));
   }
+  function miniCartLog(label, details = {}) {
+    console.log(`[Amazon Customizer][${MINI_CART_DEBUG_VERSION}] ${label}`, details);
+  }
   function stageLog(label, details = {}) {
-    console.log(`[Amazon Customizer] ${label}`, details);
+    if (
+      label === "Cart sections refresh started" ||
+      label === "Cart sections refresh completed" ||
+      label === "Cart UI refresh applying" ||
+      label === "Cart UI refresh applied" ||
+      label === "Cart add completed"
+    ) {
+      miniCartLog(label, details);
+    }
   }
   function cssFontFamily(family) {
     return `"${String(family || "").replace(/"/g, '\\"')}", Arial, Helvetica, sans-serif`;
@@ -744,7 +746,10 @@
     const suffix = value ? `: <strong>${escapeHtml(value)}</strong>` : "";
     const help = visibleInstructions(item.instructions);
     const helpButton = help ? `<button type="button" class="amzcustom-help-trigger" data-help="${escapeHtml(help)}" aria-label="${escapeHtml(help)}"></button>` : "";
-    return `<div class="amzcustom-title"><span>${escapeHtml(item.label)}<span class="amzcustom-title-value">${suffix}</span></span>${helpButton}${item.required ? "" : '<em>(optional)</em>'}</div>${value ? `<div class="amzcustom-selected">Selected: <strong>${escapeHtml(value)}</strong></div>` : ""}`;
+    const requiredBadge = item.required
+      ? '<span class="amzcustom-required" aria-hidden="true">*</span><span class="amzcustom-sr-only"> required</span>'
+      : "";
+    return `<div class="amzcustom-title"><span>${escapeHtml(item.label)}${requiredBadge}<span class="amzcustom-title-value">${suffix}</span></span>${helpButton}${item.required ? "" : '<em>(optional)</em>'}</div>${value ? `<div class="amzcustom-selected">Selected: <strong>${escapeHtml(value)}</strong></div>` : ""}`;
   }
   function visibleInstructions(value) {
     const text = String(value || "").replace(/\s+/g, " ").trim();
@@ -1455,6 +1460,44 @@
     if (typeof html !== "string") return "";
     return new DOMParser().parseFromString(html, "text/html").querySelector(selector)?.innerHTML || "";
   }
+  function applyCartUiSections(sections, options = {}) {
+    const reason = options.reason || "manual";
+    const drawer = getCartDrawer();
+    const hasDrawerSections = typeof sections?.["cart-drawer"] === "string";
+    const hasBubbleSection = typeof sections?.["cart-icon-bubble"] === "string";
+
+    stageLog("Cart UI refresh applying", {
+      reason,
+      hasDrawer: Boolean(drawer),
+      hasDrawerSections,
+      hasBubbleSection,
+      sectionKeys: Object.keys(sections || {})
+    });
+
+    if (drawer && typeof drawer.renderContents === "function" && hasDrawerSections) {
+      drawer.renderContents(
+        {
+          id: drawer.productId || null,
+          sections
+        },
+        {
+          openDrawer: Boolean(options.openDrawer)
+        }
+      );
+    } else {
+      const bubble = document.getElementById("cart-icon-bubble");
+      if (bubble && hasBubbleSection) {
+        bubble.innerHTML = extractSectionInnerHtml(sections["cart-icon-bubble"], ".shopify-section");
+      }
+    }
+
+    const drawerItemNodes = drawer?.querySelectorAll?.('[id^="CartDrawer-Item-"]')?.length || 0;
+    stageLog("Cart UI refresh applied", {
+      reason,
+      drawerItemNodes,
+      bubbleText: document.getElementById("cart-icon-bubble")?.textContent?.trim()?.slice(0, 80) || ""
+    });
+  }
   async function fetchCartSections(sectionIds) {
     const uniqueSectionIds = [...new Set(sectionIds.filter(Boolean))];
     if (!uniqueSectionIds.length) return {};
@@ -1486,29 +1529,9 @@
 
     try {
       const sections = await fetchCartSections(sectionIds);
-      stageLog("Cart UI refresh applying", {
-        reason,
-        hasDrawer: Boolean(drawer),
-        sectionKeys: Object.keys(sections || {})
-      });
-
-      if (drawer && typeof drawer.renderContents === "function" && typeof sections["cart-drawer"] === "string") {
-        drawer.renderContents({ id: drawer.productId || null, sections }, { openDrawer: false });
-      } else {
-        const bubble = document.getElementById("cart-icon-bubble");
-        if (bubble && typeof sections["cart-icon-bubble"] === "string") {
-          bubble.innerHTML = extractSectionInnerHtml(sections["cart-icon-bubble"], ".shopify-section");
-        }
-      }
-
-      const drawerItemNodes = drawer?.querySelectorAll?.('[id^="CartDrawer-Item-"]')?.length || 0;
-      stageLog("Cart UI refresh applied", {
-        reason,
-        drawerItemNodes,
-        bubbleText: document.getElementById("cart-icon-bubble")?.textContent?.trim()?.slice(0, 80) || ""
-      });
+      applyCartUiSections(sections, { reason, openDrawer: false });
     } catch (error) {
-      console.warn("[Amazon Customizer] Cart UI refresh failed", {
+      console.warn(`[Amazon Customizer][${MINI_CART_DEBUG_VERSION}] Cart UI refresh failed`, {
         reason,
         error: error?.message || String(error)
       });
@@ -1523,11 +1546,6 @@
     const add = q(instance.modal, ".amzcustom-add");
     const startedAt = performance.now();
     const startedAtIso = new Date().toISOString();
-    console.log("[Amazon Customizer] Add customized item started", {
-      variantId: currentVariantId(instance),
-      productId: instance.root.dataset.productId,
-      startedAt: startedAtIso
-    });
     add.disabled = true;
     add.classList.add("is-loading");
     add.innerHTML = '<span class="amzcustom-spinner" aria-hidden="true"></span><span>Saving...</span>';
@@ -1565,24 +1583,38 @@
       const selectedVariantId = currentVariantId(instance);
       if (!selectedVariantId) throw new Error("Please choose a product variant before customizing.");
       const items = [{ id:Number(selectedVariantId), quantity:1, properties }];
+      const drawer = getCartDrawer();
+      const sectionIds = getCartDrawerSectionIds(drawer);
+      if (!sectionIds.includes("cart-icon-bubble")) sectionIds.push("cart-icon-bubble");
+      if (drawer && !sectionIds.includes("cart-drawer")) sectionIds.push("cart-drawer");
       
       const cartAddStartedAt = nowMs();
-      const addResponse = await fetch(`${window.Shopify.routes.root}cart/add.js`, { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({items}) });
+      const addResponse = await fetch(`${window.Shopify.routes.root}cart/add.js`, {
+        method:"POST",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify({
+          items,
+          sections: sectionIds,
+          sections_url: window.location.pathname
+        })
+      });
+      const addResult = await addResponse.json();
       
       if (!addResponse.ok) {
-        const errorJson = await addResponse.json();
-        throw new Error(errorJson.description || "Không thể thêm vào giỏ hàng.");
+        throw new Error(addResult.description || "Không thể thêm vào giỏ hàng.");
       }
       stageLog("Cart add completed", {
         elapsedSeconds: secondsSince(cartAddStartedAt),
-        lineItemCount: items.length
+        lineItemCount: items.length,
+        responseSectionKeys: addResult && typeof addResult === "object" ? Object.keys(addResult.sections || {}) : []
       });
       const finishedAt = performance.now();
       const elapsedSeconds = Number(((finishedAt - startedAt) / 1000).toFixed(2));
-      console.log("[Amazon Customizer] Add customized item completed", {
+      miniCartLog("Opening mini cart after modal add-to-cart", {
         variantId: selectedVariantId,
         customizationId,
-        elapsedSeconds
+        elapsedSeconds,
+        version: MINI_CART_DEBUG_VERSION
       });
       try {
         sessionStorage.setItem("amzcustom_last_add_timing", JSON.stringify({
@@ -1593,11 +1625,26 @@
         }));
       } catch (e) {
       }
-      resetInstanceUi(instance, "before-cart-redirect");
-      window.location.href = `${window.Shopify.routes.root}cart`;
+      resetInstanceUi(instance, "after-cart-add");
+      const hasSectionsFromAdd = addResult && typeof addResult.sections === "object" && Object.keys(addResult.sections).length > 0;
+      miniCartLog("Mini cart open attempt", {
+        hasDrawer: Boolean(drawer),
+        canOpenDrawer: typeof drawer?.renderContents === "function" || typeof drawer?.open === "function",
+        hasSectionsFromAdd,
+        sectionIds,
+        version: MINI_CART_DEBUG_VERSION
+      });
+      if (hasSectionsFromAdd) {
+        applyCartUiSections(addResult.sections, { reason: "after-cart-add", openDrawer: true });
+      } else {
+        await refreshCartUiFromServer("after-cart-add");
+        if (drawer && typeof drawer.open === "function") {
+          drawer.open();
+        }
+      }
     } catch (error) {
       const failedAt = performance.now();
-      console.warn("[Amazon Customizer] Add customized item failed", {
+      console.warn(`[Amazon Customizer][${MINI_CART_DEBUG_VERSION}] Add customized item failed`, {
         variantId: currentVariantId(instance),
         elapsedSeconds: Number(((failedAt - startedAt) / 1000).toFixed(2)),
         error: error?.message || String(error)

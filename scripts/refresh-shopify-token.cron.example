@@ -1,0 +1,6 @@
+# Refresh Shopify Admin API token every 12 hours and restart the PM2 app.
+# Adjust the project path, Python path, and PM2 app name for your VPS.
+0 */12 * * * cd /path/to/customize_app/tool_sync_customize && PM2_APP_NAME=amazon-customizer PYTHON_BIN=/usr/bin/python3 ./scripts/refresh-shopify-token.sh >> /var/log/amazon-customizer-token-refresh.log 2>&1
+
+# Example using systemd instead of PM2:
+# 0 */12 * * * cd /path/to/customize_app/tool_sync_customize && SYSTEMD_SERVICE_NAME=amazon-customizer PYTHON_BIN=/usr/bin/python3 ./scripts/refresh-shopify-token.sh >> /var/log/amazon-customizer-token-refresh.log 2>&1

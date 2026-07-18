@@ -7,6 +7,7 @@
     "extract": "node index.js",
     "crawl": "node index.js",
     "start": "node server.js",
+    "token:refresh": "python shopify_codex_tool.py token-client-credentials --save",
     "cleanup": "node scripts/cleanup-shopify-files.js",
     "cleanup:apply": "node scripts/cleanup-shopify-files.js --apply",
     "test:smoke": "node tests/smoke-customizer.js",

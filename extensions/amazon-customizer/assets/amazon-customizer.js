@@ -100,6 +100,18 @@
       null
     );
   }
+  function currentQuantity(root) {
+    const form = productFormRoot(root);
+    const formId = String(form?.id || "");
+    const quantityInput = (
+      form?.querySelector('input[name="quantity"]') ||
+      (formId ? document.querySelector(`input[name="quantity"][form="${CSS.escape(formId)}"]`) : null) ||
+      root.closest("product-info, .shopify-section, featured-product-information, main")?.querySelector('input[name="quantity"]') ||
+      document.querySelector('input[name="quantity"]')
+    );
+    const quantity = Number.parseInt(String(quantityInput?.value || "1"), 10);
+    return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+  }
   function parseSelectedVariantJson(root) {
     const variantSelects = variantSelectsRoot(root);
     const script = variantSelects?.querySelector("[data-selected-variant]");
@@ -749,7 +761,7 @@
     const requiredBadge = item.required
       ? '<span class="amzcustom-required" aria-hidden="true">*</span><span class="amzcustom-sr-only"> required</span>'
       : "";
-    return `<div class="amzcustom-title"><span>${escapeHtml(item.label)}${requiredBadge}<span class="amzcustom-title-value">${suffix}</span></span>${helpButton}${item.required ? "" : '<em>(optional)</em>'}</div>${value ? `<div class="amzcustom-selected">Selected: <strong>${escapeHtml(value)}</strong></div>` : ""}`;
+    return `<div class="amzcustom-title"><span>${escapeHtml(normalizeUiLabel(item.label))}${requiredBadge}<span class="amzcustom-title-value">${suffix}</span></span>${helpButton}${item.required ? "" : '<em>(optional)</em>'}</div>${value ? `<div class="amzcustom-selected">Selected: <strong>${escapeHtml(value)}</strong></div>` : ""}`;
   }
   function visibleInstructions(value) {
     const text = String(value || "").replace(/\s+/g, " ").trim();
@@ -761,6 +773,15 @@
       "Why pay for shipping twice? Add the matching tapestry to your order now, complete the look, and save time & money."
     ].map((item) => item.replace(/\s+/g, " ").trim());
     return hidden.includes(text) ? "" : text;
+  }
+  function normalizeUiLabel(value) {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    const lettersOnly = text.replace(/[^A-Za-z]+/g, "");
+    if (!lettersOnly) return text;
+    const isAllCaps = lettersOnly.length > 1 && lettersOnly === lettersOnly.toUpperCase();
+    if (!isAllCaps) return text;
+    return text.toLowerCase().replace(/\b([a-z])/g, (match) => match.toUpperCase());
   }
   function isYesNoGroup(item) {
     const labels = (item.options || []).map((option) => String(option.label || "").trim().toUpperCase()).sort();
@@ -814,12 +835,12 @@
     const optionItems = !item.required ? [{ id: "", label: "No selection", cost: 0, noSelection: true }, ...visibleOptions] : visibleOptions;
     const choices = optionItems.map((option) => {
       const img = option.thumbnailImage || option.overlayImage;
-      return `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="primary" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-stock-icon"></span>`}<span>${escapeHtml(option.label)}</span>${option.outOfStock ? "<small>Out of stock</small>" : option.cost ? `<small>+${formatMoney(option.cost, instance)}</small>` : ""}</button>`;
+      return `<button type="button" class="amzcustom-choice ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="primary" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-stock-icon"></span>`}<span>${escapeHtml(normalizeUiLabel(option.label))}</span>${option.outOfStock ? "<small>Out of stock</small>" : option.cost ? `<small>+${formatMoney(option.cost, instance)}</small>` : ""}</button>`;
     }).join("");
     const toggle = shouldCollapse ? `<button type="button" class="amzcustom-options-toggle" data-options-toggle="${escapeHtml(item.id)}">${expanded ? "See less" : `See all ${item.options.length} options`}</button>` : "";
     const primaryIds = new Set(primaryOptions.map((option) => option.id));
     const overflowOptions = shouldCollapse ? item.options.filter((option) => !primaryIds.has(option.id)) : [];
-    const overflow = shouldCollapse && expanded ? `<div class="amzcustom-options-list">${overflowOptions.map((option) => { const img = option.thumbnailImage || option.overlayImage; return `<button type="button" class="amzcustom-option-row ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="overflow" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-row-icon"></span>`}<span>${escapeHtml(option.label)}</span></button>`; }).join("")}</div>` : "";
+    const overflow = shouldCollapse && expanded ? `<div class="amzcustom-options-list">${overflowOptions.map((option) => { const img = option.thumbnailImage || option.overlayImage; return `<button type="button" class="amzcustom-option-row ${state.options[item.id] === option.id ? "is-selected" : ""} ${option.outOfStock ? "is-out" : ""}" data-option="${escapeHtml(option.id)}" data-option-source="overflow" ${option.outOfStock ? "disabled" : ""}>${img ? `<img src="${escapeHtml(img.url)}" alt="">` : `<span class="amzcustom-row-icon"></span>`}<span>${escapeHtml(normalizeUiLabel(option.label))}</span></button>`; }).join("")}</div>` : "";
     return `<div class="amzcustom-choices ${isYesNoGroup(item) ? "is-yes-no" : ""} ${isInlineChoiceGroup(item) ? "is-inline-choice" : ""} ${isSizeChoiceGroup(item) ? "is-size-choice" : ""} ${isTextChoiceGroup(item) ? "is-text-choice" : ""} ${shouldCollapse ? "is-collapsed" : ""} ${expanded ? "is-expanded" : ""}">${choices}</div>${toggle}${overflow}`;
   }
   function controlHtml(instance, type, item) {
@@ -828,9 +849,9 @@
     if (type === "option") {
       item.options = Array.isArray(item.options) ? item.options : [];
       const hasImages = item.options.some((option) => option.thumbnailImage || option.overlayImage);
-      const selectedValue = item.options.find((option) => option.id === state.options[item.id])?.label || "";
+      const selectedValue = normalizeUiLabel(item.options.find((option) => option.id === state.options[item.id])?.label || "");
       if (item.displayHint === "choice-grid" || hasImages || isYesNoGroup(item) || isSizeChoiceGroup(item) || isTextChoiceGroup(item) || isInlineChoiceGroup(item)) return `<section class="amzcustom-control ${state.errors[item.id] ? "is-invalid" : ""}" data-id="${item.id}">${controlHeader(item, selectedValue)}${optionChoicesHtml(instance, state, item)}<span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
-      return `<section class="amzcustom-control ${state.errors[item.id] ? "is-invalid" : ""}" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(option.label)}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(option.cost, instance)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
+      return `<section class="amzcustom-control ${state.errors[item.id] ? "is-invalid" : ""}" data-id="${item.id}">${controlHeader(item, selectedValue)}<select>${!item.required ? '<option value="">No selection</option>' : ""}${item.options.map((option) => `<option value="${escapeHtml(option.id)}" ${state.options[item.id] === option.id ? "selected" : ""} ${option.outOfStock ? "disabled" : ""}>${escapeHtml(normalizeUiLabel(option.label))}${option.outOfStock ? " - Out of stock" : option.cost ? ` (+${formatMoney(option.cost, instance)})` : ""}</option>`).join("")}</select><span class="amzcustom-error">${escapeHtml(state.errors[item.id] || "")}</span></section>`;
     }
     if (type === "text") {
       const value = state.texts[item.id] || "";
@@ -1087,7 +1108,7 @@
   }
   function validate(instance) {
     const errors = {};
-    for (const group of instance.config.optionGroups) if (visible(instance, group) && group.required && !instance.state.options[group.id]) errors[group.id] = "Vui lòng chọn một tùy chọn.";
+    for (const group of instance.config.optionGroups) if (visible(instance, group) && group.required && !instance.state.options[group.id]) errors[group.id] = "Please select an option.";
     for (const input of instance.config.textInputs) {
       const value = instance.state.texts[input.id] || "";
       if (!visible(instance,input)) continue;
@@ -1097,7 +1118,7 @@
         try { if (!new RegExp(`^(?:${instance.config.regexChoices[input.regexChoice].pattern})$`).test(value)) errors[input.id] = instance.config.regexChoices[input.regexChoice].instructions || "Use only supported characters."; } catch {}
       }
     }
-    for (const input of instance.config.imageInputs) if (visible(instance,input) && input.required && !instance.state.images[input.id]) errors[input.id] = "Bắt buộc tải ảnh.";
+    for (const input of instance.config.imageInputs) if (visible(instance,input) && input.required && !instance.state.images[input.id]) errors[input.id] = "Image upload is required.";
     instance.state.errors = errors;
     stageLog("Validation result", {
       errorIds: Object.keys(errors),
@@ -1123,13 +1144,22 @@
       }
       if (dialog) {
         const headHeight = q(instance.modal, ".amzcustom-head")?.getBoundingClientRect().height || 0;
+        const preview = q(instance.modal, ".amzcustom-preview");
+        const previewRect = preview?.getBoundingClientRect?.() || null;
         const footHeight = q(instance.modal, ".amzcustom-foot")?.getBoundingClientRect().height || 0;
         const dialogRect = dialog.getBoundingClientRect();
         const controlRect = control.getBoundingClientRect();
         const currentScroll = dialog.scrollTop;
         const topInDialog = controlRect.top - dialogRect.top + currentScroll;
-        const targetScroll = Math.max(0, topInDialog - headHeight - 20);
-        const visibleTop = currentScroll + headHeight;
+        const headBottom = headHeight;
+        const previewBottom = previewRect
+          ? Math.max(0, Math.min(dialog.clientHeight, (previewRect.bottom - dialogRect.top)))
+          : 0;
+        const stickyTopOffset = previewRect && previewRect.top <= dialogRect.top + headHeight + 1
+          ? Math.max(headBottom, previewBottom)
+          : headBottom;
+        const targetScroll = Math.max(0, topInDialog - stickyTopOffset - 20);
+        const visibleTop = currentScroll + stickyTopOffset;
         const visibleBottom = currentScroll + dialog.clientHeight - footHeight;
         const controlTop = topInDialog;
         const controlBottom = topInDialog + controlRect.height;
@@ -1139,6 +1169,8 @@
           currentScroll,
           targetScroll,
           headHeight,
+          stickyTopOffset,
+          previewBottom,
           footHeight,
           dialogClientHeight: dialog.clientHeight,
           controlTop,
@@ -1172,7 +1204,7 @@
     });
   }
   async function upload(instance, file, label = "asset") {
-    if (!instance.root.dataset.uploadUrl) throw new Error("Theme block chưa cấu hình upload URL.");
+    if (!instance.root.dataset.uploadUrl) throw new Error("The theme block upload URL is not configured.");
     const startedAt = nowMs();
     stageLog(`Upload started: ${label}`, {
       mimeType: file?.type || "unknown",
@@ -1197,7 +1229,7 @@
       body:JSON.stringify({ action: "complete", resourceUrl: upload.resourceUrl, filename: upload.filename, mimeType: upload.mimeType || file?.type })
     });
     const json = await response.json();
-    if (!response.ok || !json.ok) throw new Error(json.error || "Upload thất bại");
+    if (!response.ok || !json.ok) throw new Error(json.error || "Upload failed.");
     stageLog(`Upload completed: ${label}`, {
       elapsedSeconds: secondsSince(startedAt),
       fileId: json.file?.id,
@@ -1237,11 +1269,11 @@
   }
   async function loadCanvasImage(url) {
     const key = String(url || "");
-    if (!key) throw new Error("Không có URL preview asset.");
+    if (!key) throw new Error("Missing preview asset URL.");
     if (!canvasImageCache.has(key)) {
       canvasImageCache.set(key, (async () => {
         const response = await fetch(key);
-        if (!response.ok) throw new Error(`Không tải được preview asset (${response.status}).`);
+        if (!response.ok) throw new Error(`Unable to load the preview asset (${response.status}).`);
         const objectUrl = URL.createObjectURL(await response.blob());
         try {
           return await new Promise((resolve, reject) => {
@@ -1420,12 +1452,30 @@
     });
     return properties;
   }
+  function setFooterButtonsLoading(instance, activeButton, loadingLabel = "Saving...") {
+    const buttons = instance?.modal?.querySelectorAll(".amzcustom-add, .amzcustom-buy-now");
+    if (!buttons?.length) return;
+    buttons.forEach((button) => {
+      button.disabled = true;
+      button.classList.toggle("is-loading", button === activeButton);
+      if (button === activeButton) {
+        button.innerHTML = `<span class="amzcustom-spinner" aria-hidden="true"></span><span>${loadingLabel}</span>`;
+      }
+    });
+  }
   function resetAddButton(instance) {
     const add = q(instance?.modal, ".amzcustom-add");
-    if (!add) return;
-    add.disabled = false;
-    add.classList.remove("is-loading");
-    add.textContent = "Add to cart";
+    const buyNow = q(instance?.modal, ".amzcustom-buy-now");
+    if (add) {
+      add.disabled = false;
+      add.classList.remove("is-loading");
+      add.textContent = "Add to cart";
+    }
+    if (buyNow) {
+      buyNow.disabled = false;
+      buyNow.classList.remove("is-loading");
+      buyNow.textContent = "Buy now";
+    }
   }
   function closeModal(instance) {
     if (!instance?.modal) return;
@@ -1537,18 +1587,17 @@
       });
     }
   }
-  async function finish(instance) {
+  async function finish(instance, options = {}) {
     if (!validate(instance)) {
       renderControls(instance, { preserveScroll: false });
       scrollToFirstError(instance);
       return;
     }
-    const add = q(instance.modal, ".amzcustom-add");
+    const redirectToCheckout = Boolean(options?.redirectToCheckout);
+    const activeButton = options?.button || q(instance.modal, redirectToCheckout ? ".amzcustom-buy-now" : ".amzcustom-add");
     const startedAt = performance.now();
     const startedAtIso = new Date().toISOString();
-    add.disabled = true;
-    add.classList.add("is-loading");
-    add.innerHTML = '<span class="amzcustom-spinner" aria-hidden="true"></span><span>Saving...</span>';
+    setFooterButtonsLoading(instance, activeButton, redirectToCheckout ? "Redirecting..." : "Saving...");
     try {
       const imageEntries = Object.entries(instance.state.images);
       stageLog("Add customized item context", {
@@ -1556,7 +1605,8 @@
         imageCount: imageEntries.length,
         surcharge: surcharge(instance),
         basePrice: basePrice(instance),
-        totalPrice: totalPrice(instance)
+        totalPrice: totalPrice(instance),
+        redirectToCheckout
       });
       const uploadedImageEntries = await Promise.all(imageEntries.map(async ([id, value]) => {
         const uploadStartedAt = nowMs();
@@ -1582,7 +1632,8 @@
       const properties = customizationProperties(instance, customizationId, payload);
       const selectedVariantId = currentVariantId(instance);
       if (!selectedVariantId) throw new Error("Please choose a product variant before customizing.");
-      const items = [{ id:Number(selectedVariantId), quantity:1, properties }];
+      const quantity = currentQuantity(instance.root);
+      const items = [{ id:Number(selectedVariantId), quantity, properties }];
       const drawer = getCartDrawer();
       const sectionIds = getCartDrawerSectionIds(drawer);
       if (!sectionIds.includes("cart-icon-bubble")) sectionIds.push("cart-icon-bubble");
@@ -1601,7 +1652,11 @@
       const addResult = await addResponse.json();
       
       if (!addResponse.ok) {
-        throw new Error(addResult.description || "Không thể thêm vào giỏ hàng.");
+        throw new Error(addResult.description || "Unable to add this item to the cart.");
+      }
+      if (redirectToCheckout) {
+        window.location.assign(`${window.Shopify.routes.root}checkout`);
+        return;
       }
       stageLog("Cart add completed", {
         elapsedSeconds: secondsSince(cartAddStartedAt),
@@ -1669,10 +1724,10 @@
     if (!config || instances.has(root)) return;
     for(const group of config.fontGroups||[])for(const font of group.options||[])ensureFontLoaded(font);
     const modal = document.createElement("div"); modal.className="amzcustom-modal"; modal.hidden=true;
-    modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><div class="amzcustom-price-summary"><strong class="amzcustom-price"></strong><strong class="amzcustom-total-price"></strong></div><button class="amzcustom-add">Add to cart</button></footer></section>`;
+    modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><div class="amzcustom-price-summary"><strong class="amzcustom-price"></strong><strong class="amzcustom-total-price"></strong></div><div class="amzcustom-foot-actions"><button class="amzcustom-buy-now">Buy now</button><button class="amzcustom-add">Add to cart</button></div></footer></section>`;
     document.body.appendChild(modal); const instance={root,modal,config,state:initialState(config)}; instances.set(root,instance);
     q(root,".amzcustom-open").addEventListener("click",()=>{ modal.hidden=false; document.body.classList.add("amzcustom-locked"); renderControls(instance); scheduleFontReadyRender(instance); });
-    q(modal,".amzcustom-close").addEventListener("click",()=>closeModal(instance)); q(modal,".amzcustom-backdrop").addEventListener("click",()=>closeModal(instance)); q(modal,".amzcustom-add").addEventListener("click",()=>finish(instance));
+    q(modal,".amzcustom-close").addEventListener("click",()=>closeModal(instance)); q(modal,".amzcustom-backdrop").addEventListener("click",()=>closeModal(instance)); q(modal,".amzcustom-add").addEventListener("click",(event)=>finish(instance,{ button:event.currentTarget })); q(modal,".amzcustom-buy-now").addEventListener("click",(event)=>finish(instance,{ button:event.currentTarget, redirectToCheckout:true }));
     const form = root.closest('form[action*="/cart/add"]');
     if (form) {
       form.addEventListener("submit", () => {

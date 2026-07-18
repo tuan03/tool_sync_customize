@@ -212,9 +212,15 @@
 .amzcustom-price:empty { display: none; }
 .amzcustom-price-summary { display: grid; gap: 2px; min-width: 0; align-content: center; justify-items: start; }
 .amzcustom-total-price { min-width: 0; overflow-wrap: anywhere; color: #111; line-height: 1.15; font-weight: 900; }
+.amzcustom-foot-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+.amzcustom-buy-now,
 .amzcustom-add { min-width: 148px; min-height: 46px; border: 1px solid #fcd200; border-radius: 999px; background: #ffd814; color: #111; font-weight: 800; cursor: pointer; }
+.amzcustom-buy-now { border-color: #111; background: #111; color: #fff; }
+.amzcustom-buy-now.is-loading,
 .amzcustom-add.is-loading { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+.amzcustom-buy-now.is-loading .amzcustom-spinner,
 .amzcustom-add.is-loading .amzcustom-spinner { width: 18px; height: 18px; border: 2px solid rgba(17,17,17,.24); border-top-color: #111; border-radius: 50%; animation: amzcustom-spin .8s linear infinite; }
+.amzcustom-buy-now.is-loading .amzcustom-spinner { border-color: rgba(255,255,255,.28); border-top-color: #fff; }
 .amzcustom-error { color: #b42318; font-size: 13px; }
 body.amzcustom-locked { overflow: hidden; }
 @keyframes amzcustom-spin {
@@ -258,6 +264,8 @@ body.amzcustom-locked { overflow: hidden; }
   .amzcustom-options-list { display: grid; }
   .amzcustom-foot { justify-content: flex-end; gap: 16px; padding: 14px 20px; }
   .amzcustom-price-summary { justify-items: end; text-align: right; }
+  .amzcustom-foot-actions { gap: 12px; }
+  .amzcustom-buy-now,
   .amzcustom-add { min-width: 190px; }
 }
 @media (min-width: 1025px) {

@@ -20,7 +20,68 @@
     config.controlOrder = config.controlOrder.filter((entry) => entry && entry.type && entry.id);
     config.product ||= {};
     config.pricing ||= {};
+    remapPreviewAssetUrls(config);
     return config;
+  }
+
+  function isShopifyCdnUrl(url) {
+    return /cdn\.shopify\.com/i.test(String(url || ""));
+  }
+
+  function cloneAssetLike(source, assetOverride) {
+    if (!source && !assetOverride) return source;
+    return {
+      ...(source || {}),
+      ...(assetOverride || {})
+    };
+  }
+
+  function roleAssets(config, role) {
+    return (config.assets || []).filter((asset) => Array.isArray(asset?.roles) && asset.roles.includes(role));
+  }
+
+  function remapPreviewAssetUrls(config) {
+    const baseAssets = roleAssets(config, "base");
+    const overlayAssets = roleAssets(config, "overlay");
+    const thumbnailAssets = roleAssets(config, "thumbnail");
+    const productAssets = roleAssets(config, "product");
+
+    config.surfaces = (config.surfaces || []).map((surface, index) => {
+      const baseAsset = baseAssets[index] || baseAssets[0] || null;
+      const nextSurface = { ...(surface || {}) };
+      if (surface?.baseImage?.url && !isShopifyCdnUrl(surface.baseImage.url) && baseAsset?.url) {
+        nextSurface.baseImage = cloneAssetLike(surface.baseImage, baseAsset);
+      }
+      return nextSurface;
+    });
+
+    let overlayIndex = 0;
+    let thumbnailIndex = 0;
+    config.optionGroups = (config.optionGroups || []).map((group) => ({
+      ...(group || {}),
+      options: (group?.options || []).map((option) => {
+        const nextOption = { ...(option || {}) };
+        if (option?.overlayImage?.url) {
+          const replacement = overlayAssets[overlayIndex] || null;
+          overlayIndex += 1;
+          if (!isShopifyCdnUrl(option.overlayImage.url) && replacement?.url) {
+            nextOption.overlayImage = cloneAssetLike(option.overlayImage, replacement);
+          }
+        }
+        if (option?.thumbnailImage?.url) {
+          const replacement = thumbnailAssets[thumbnailIndex] || null;
+          thumbnailIndex += 1;
+          if (!isShopifyCdnUrl(option.thumbnailImage.url) && replacement?.url) {
+            nextOption.thumbnailImage = cloneAssetLike(option.thumbnailImage, replacement);
+          }
+        }
+        return nextOption;
+      })
+    }));
+
+    if (config.product?.productImageUrl && !isShopifyCdnUrl(config.product.productImageUrl) && productAssets[0]?.url) {
+      config.product.productImageUrl = productAssets[0].url;
+    }
   }
 
   async function parseConfig(root) {
@@ -779,9 +840,13 @@
     if (!text) return "";
     const lettersOnly = text.replace(/[^A-Za-z]+/g, "");
     if (!lettersOnly) return text;
-    const isAllCaps = lettersOnly.length > 1 && lettersOnly === lettersOnly.toUpperCase();
-    if (!isAllCaps) return text;
-    return text.toLowerCase().replace(/\b([a-z])/g, (match) => match.toUpperCase());
+    const uppercaseLetters = lettersOnly.replace(/[^A-Z]/g, "").length;
+    const uppercaseRatio = uppercaseLetters / Math.max(lettersOnly.length, 1);
+    const shouldTitleCase = lettersOnly.length > 1 && uppercaseRatio >= 0.72;
+    if (!shouldTitleCase) return text;
+    return text
+      .toLowerCase()
+      .replace(/\b([a-z])/g, (match) => match.toUpperCase());
   }
   function isYesNoGroup(item) {
     const labels = (item.options || []).map((option) => String(option.label || "").trim().toUpperCase()).sort();

@@ -125,21 +125,29 @@
 
       for (const layer of previewModel.layers || []) {
         if (layer.type === "image") {
-          const image = await loadImage(layer.src);
-          const rect = ratioRect(layer.rect, size);
-          context.drawImage(image, rect.x, rect.y, rect.width, rect.height);
+          try {
+            const image = await loadImage(layer.src);
+            const rect = ratioRect(layer.rect, size);
+            context.drawImage(image, rect.x, rect.y, rect.width, rect.height);
+          } catch (error) {
+            console.warn("[Amazon Customizer] Skipping failed image layer", { src: layer.src, error });
+          }
           continue;
         }
         if (layer.type === "clipped-image") {
-          const image = await loadImage(layer.src);
-          const clipRect = ratioRect(layer.clipRect, size);
-          const imageRect = ratioRect(layer.imageRect, size);
-          context.save();
-          context.beginPath();
-          context.rect(clipRect.x, clipRect.y, clipRect.width, clipRect.height);
-          context.clip();
-          context.drawImage(image, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
-          context.restore();
+          try {
+            const image = await loadImage(layer.src);
+            const clipRect = ratioRect(layer.clipRect, size);
+            const imageRect = ratioRect(layer.imageRect, size);
+            context.save();
+            context.beginPath();
+            context.rect(clipRect.x, clipRect.y, clipRect.width, clipRect.height);
+            context.clip();
+            context.drawImage(image, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
+            context.restore();
+          } catch (error) {
+            console.warn("[Amazon Customizer] Skipping failed clipped-image layer", { src: layer.src, error });
+          }
           continue;
         }
         if (layer.type === "text") {

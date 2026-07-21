@@ -24,6 +24,27 @@
     return config;
   }
 
+  function hasRealCustomizationControls(config) {
+    if (!config) return false;
+    if ((config.textInputs || []).length || (config.imageInputs || []).length) return true;
+    if ((config.optionGroups || []).some((group) => Array.isArray(group.options) && group.options.length)) return true;
+    if ((config.fontGroups || []).some((group) => Array.isArray(group.options) && group.options.length)) return true;
+    if ((config.colorGroups || []).some((group) => Array.isArray(group.options) && group.options.length)) return true;
+    return false;
+  }
+
+  function hideEmptyCustomizer(root, openButton) {
+    root.dataset.amzcustomDisabledReason = "no-custom-controls";
+    root.classList.add("amzcustom-root--empty");
+    root.hidden = true;
+    root.setAttribute("aria-hidden", "true");
+    if (!openButton) return;
+    openButton.hidden = true;
+    openButton.disabled = true;
+    openButton.tabIndex = -1;
+    openButton.setAttribute("aria-hidden", "true");
+  }
+
   function isShopifyCdnUrl(url) {
     return /cdn\.shopify\.com/i.test(String(url || ""));
   }
@@ -607,6 +628,9 @@
     const offset = state.placementOffsets[placementId] || { x:0, y:0 };
     return { left:`${100 * (placement.position.x + offset.x) / size}%`, top:`${100 * (placement.position.y + offset.y) / size}%`, width:`${100 * placement.dimension.width / size}%`, height:`${100 * placement.dimension.height / size}%` };
   }
+  function validPlacement(config, placementId) {
+    return !!placementId && (config.placements || []).some((item) => item.id === placementId);
+  }
   function setBox(element, styles) { Object.assign(element.style, styles); }
   function startEdit(instance, editId) {
     instance.state.activeEdit = editId;
@@ -684,6 +708,7 @@
     renderOptionOverlays(instance, isBackgroundOptionGroup, "amzcustom-stage-background");
     for (const input of config.imageInputs || []) {
       if (!visible(instance, input) || !state.images[input.id]) continue;
+      if (!validPlacement(config, input.placementId)) continue;
       const placement = (config.placements || []).find((item) => item.id === input.placementId) || null;
       const boxStyles = box(config, input.placementId, state);
       const editId = `image:${input.id}`;
@@ -696,6 +721,7 @@
     renderOptionOverlays(instance, (group) => !isBackgroundOptionGroup(group), "amzcustom-stage-overlay");
     for (const input of config.textInputs || []) {
       if (!visible(instance, input) || !state.texts[input.id]) continue;
+      if (!validPlacement(config, input.placementId)) continue;
       const boxStyles = box(config, input.placementId, state);
       const editId = `text:${input.id}`;
       const layer = document.createElement("div"); layer.className = `amzcustom-layer amzcustom-text-layer ${isSingleLineText(input) ? "is-single-line" : ""} ${state.activeEdit === editId ? "is-active-edit" : ""}`; layer.dataset.placementId=input.placementId||""; layer.dataset.editId = editId; setBox(layer, boxStyles);
@@ -1021,16 +1047,23 @@
   }
   function hideHelpTips(root) {
     root.querySelectorAll(".amzcustom-help-trigger.is-open").forEach((item) => item.classList.remove("is-open", "is-above", "is-below"));
+    root.querySelectorAll(".amzcustom-help-tip").forEach((item) => item.remove());
   }
   function usesHoverHelp() {
     return window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches;
   }
   function showHelpTip(root, trigger) {
     hideHelpTips(root);
+    const text = trigger.dataset.help || "";
+    if (!text) return;
     trigger.classList.add("is-open");
-    positionHelpTip(trigger);
+    const tip = document.createElement("div");
+    tip.className = "amzcustom-help-tip";
+    tip.textContent = text;
+    root.appendChild(tip);
+    positionHelpTip(trigger, tip);
   }
-  function positionHelpTip(trigger) {
+  function positionHelpTip(trigger, tip) {
     const text = trigger.dataset.help || "";
     if (!text) return;
     const rect = trigger.getBoundingClientRect();
@@ -1041,9 +1074,10 @@
     const showBelow = rect.bottom + estimatedHeight + 14 <= window.innerHeight || rect.top < estimatedHeight + 14;
     const left = clamp(rect.left + rect.width / 2 - width / 2, margin, window.innerWidth - width - margin);
     const top = showBelow ? rect.bottom + 10 : clamp(rect.top - estimatedHeight - 10, margin, window.innerHeight - estimatedHeight - margin);
-    trigger.style.setProperty("--help-left", `${left}px`);
-    trigger.style.setProperty("--help-top", `${top}px`);
-    trigger.style.setProperty("--help-width", `${width}px`);
+    const target = tip || trigger;
+    target.style.setProperty("--help-left", `${left}px`);
+    target.style.setProperty("--help-top", `${top}px`);
+    target.style.setProperty("--help-width", `${width}px`);
     trigger.classList.toggle("is-below", showBelow);
     trigger.classList.toggle("is-above", !showBelow);
   }
@@ -1390,9 +1424,14 @@
     if (!stage) return null;
     const stageRect = stage.getBoundingClientRect();
     if (!stageRect.width || !stageRect.height) return null;
+    const config = instance.config || {};
     const layers = [];
+    let hasRenderableCustomization = false;
     for (const child of stage.children) {
       if (child.tagName === "IMG") {
+        if (!child.classList.contains("amzcustom-stage-base") && !child.classList.contains("amzcustom-stage-mask")) {
+          hasRenderableCustomization = true;
+        }
         layers.push({
           type: "image",
           src: child.currentSrc || child.src,
@@ -1402,9 +1441,12 @@
       }
       const editId = child.dataset.editId || "";
       const imageId = editId.startsWith("image:") ? editId.split(":")[1] : "";
+      const placementId = child.dataset.placementId || "";
+      const renderablePlacement = validPlacement(config, placementId);
       const inner = child.querySelector(".amzcustom-transform-box img");
       if (inner) {
         const uploaded = imageId ? uploadedImages[imageId] : null;
+        if (renderablePlacement) hasRenderableCustomization = true;
         layers.push({
           type: "clipped-image",
           src: uploaded?.url || inner.currentSrc || inner.src,
@@ -1416,9 +1458,11 @@
       const textNode = child.querySelector(".amzcustom-transform-box span") || child.querySelector("span") || child;
       const textBox = child.querySelector(".amzcustom-transform-box") || child;
       const style = getComputedStyle(child);
+      const text = textNode.textContent || "";
+      if (renderablePlacement && text.trim()) hasRenderableCustomization = true;
       layers.push({
         type: "text",
-        text: textNode.textContent || "",
+        text,
         rect: rectToRatio(stageRect, textBox.getBoundingClientRect()),
         color: style.color || "#000000",
         fontFamily: child.dataset.fontFamily || style.fontFamily || "Arial",
@@ -1429,6 +1473,7 @@
         singleLine: child.classList.contains("is-single-line")
       });
     }
+    if (!hasRenderableCustomization) return null;
     return {
       width: Math.round(stageRect.width),
       height: Math.round(stageRect.height),
@@ -1787,6 +1832,10 @@
       openButton.textContent = originalText;
     }
     if (!config || instances.has(root)) return;
+    if (!hasRealCustomizationControls(config)) {
+      hideEmptyCustomizer(root, openButton);
+      return;
+    }
     for(const group of config.fontGroups||[])for(const font of group.options||[])ensureFontLoaded(font);
     const modal = document.createElement("div"); modal.className="amzcustom-modal"; modal.hidden=true;
     modal.innerHTML = `<div class="amzcustom-backdrop"></div><section class="amzcustom-dialog" role="dialog" aria-modal="true"><header class="amzcustom-head"><h2>Customize your product</h2><button class="amzcustom-close" aria-label="Close">×</button></header><div class="amzcustom-body"><div class="amzcustom-preview"><div class="amzcustom-stage"></div></div><div class="amzcustom-controls"></div></div><footer class="amzcustom-foot"><div class="amzcustom-price-summary"><strong class="amzcustom-price"></strong><strong class="amzcustom-total-price"></strong></div><div class="amzcustom-foot-actions"><button class="amzcustom-buy-now">Buy now</button><button class="amzcustom-add">Add to cart</button></div></footer></section>`;

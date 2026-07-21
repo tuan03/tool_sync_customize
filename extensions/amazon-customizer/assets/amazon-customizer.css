@@ -1,4 +1,5 @@
 .amzcustom-open { width: 100%; min-height: 48px; padding: 12px 18px; border: 1px solid #111827; border-radius: 4px; background: #fff; color: #111; font: inherit; font-weight: 700; cursor: pointer; }
+.amzcustom-root--empty { display: none !important; }
 .amzcustom-modal[hidden] { display: none; }
 .amzcustom-modal { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-items: stretch; padding: 0; }
 .amzcustom-modal,
@@ -67,12 +68,9 @@
 .amzcustom-sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .amzcustom-help-trigger { position: relative; width: 22px; height: 22px; flex: 0 0 auto; border: 0; background: transparent; color: #111; cursor: help; padding: 0; }
 .amzcustom-help-trigger::before { content: "i"; position: absolute; inset: 1px; display: grid; place-items: center; border: 3px solid currentColor; border-radius: 50%; font-size: 13px; font-family: Arial, Helvetica, sans-serif; font-style: normal; font-weight: 800; line-height: 1; }
-.amzcustom-help-trigger::after { content: attr(data-help); position: fixed; left: var(--help-left, 8px); top: var(--help-top, 8px); z-index: 2147483001; display: none; width: var(--help-width, min(360px, calc(100vw - 16px))); max-height: min(220px, 48vh); overflow: auto; padding: 9px 11px; border: 1px solid #9ca3af; border-radius: 7px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.18); color: #111; font-size: 14px; font-weight: 400; line-height: 1.25; text-align: left; white-space: normal; }
-.amzcustom-help-trigger.is-open::after { display: block; }
 .amzcustom-help-trigger.is-open::before { background: #fff; }
-.amzcustom-help-trigger.is-open::after { pointer-events: none; }
 .amzcustom-help-trigger.is-open::before { z-index: 31; }
-.amzcustom-help-trigger.is-open::after { transform: none; }
+.amzcustom-help-tip { position: fixed; left: var(--help-left, 8px); top: var(--help-top, 8px); z-index: 2147483001; width: var(--help-width, min(360px, calc(100vw - 16px))); max-height: min(220px, 48vh); overflow: auto; padding: 9px 11px; border: 1px solid #9ca3af; border-radius: 7px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.18); color: #111; font-size: 14px; font-weight: 400; line-height: 1.25; text-align: left; white-space: normal; pointer-events: none; }
 .amzcustom-meta { display: flex; justify-content: flex-end; color: #111; font-size: 12px; font-weight: 600; }
 .amzcustom-control input, .amzcustom-control textarea, .amzcustom-control select { width: 100%; min-height: 44px; padding: 9px; border: 1px solid #888c8c; border-radius: 4px; font: inherit; background: #fff; color: #111; }
 .amzcustom-control textarea { resize: vertical; }
@@ -225,6 +223,16 @@
 body.amzcustom-locked { overflow: hidden; }
 @keyframes amzcustom-spin {
   to { transform: rotate(360deg); }
+}
+@media (max-width: 760px) {
+  .amzcustom-modal { place-items: center !important; padding: 16px !important; }
+  .amzcustom-dialog { height: auto !important; max-height: calc(100dvh - 32px) !important; border-radius: 8px !important; }
+  .amzcustom-foot { display: grid !important; grid-template-columns: 1fr !important; align-items: stretch !important; gap: 8px !important; padding: 12px 10px 14px !important; }
+  .amzcustom-price-summary { justify-items: start !important; width: 100% !important; }
+  .amzcustom-total-price { font-size: 15px !important; line-height: 1.2 !important; letter-spacing: 0 !important; white-space: nowrap !important; }
+  .amzcustom-foot-actions { display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 8px !important; width: 100% !important; min-width: 0 !important; }
+  .amzcustom-buy-now,
+  .amzcustom-add { display: inline-flex !important; align-items: center !important; justify-content: center !important; min-width: 0 !important; min-height: 46px !important; width: 100% !important; padding: 0 8px !important; border-radius: 12px; font-size: 13px !important; font-weight: 800; letter-spacing: 0 !important; line-height: 1.15 !important; white-space: nowrap !important; }
 }
 @media (min-width: 560px) {
   .amzcustom-stage { width: min(100%,360px,40dvh); }

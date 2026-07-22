@@ -1543,11 +1543,26 @@
     }
     return properties;
   }
+  function productionPreviewUrl(instance, customizationId, payload) {
+    if (!customizationId || !payload?.previewModel?.layers?.length) return "";
+    const uploadPath = String(instance?.root?.dataset?.uploadUrl || "/apps/amazon-customizer/upload").trim();
+    try {
+      const url = new URL(uploadPath, window.location.origin);
+      url.pathname = url.pathname.replace(/\/upload\/?$/i, "/production-preview");
+      url.searchParams.set("customization_id", customizationId);
+      return url.toString();
+    } catch (error) {
+      const fallback = new URL("/apps/amazon-customizer/production-preview", window.location.origin);
+      fallback.searchParams.set("customization_id", customizationId);
+      return fallback.toString();
+    }
+  }
   function customizationProperties(instance, customizationId, payload) {
     const visibleProperties = visibleCustomizationProperties(instance, payload.selections.images || {});
     const summary = "Customized product";
     const payloadEncoded = toBase64Unicode(JSON.stringify(payload));
     const payloadChunks = chunkString(payloadEncoded, 240);
+    const previewUrl = productionPreviewUrl(instance, customizationId, payload);
     const properties = {
       Customization: summary,
       "_customization_id": customizationId,
@@ -1557,6 +1572,7 @@
       "_customization_payload_count": String(payloadChunks.length)
     };
     Object.assign(properties, visibleProperties);
+    if (previewUrl) properties["Production preview"] = previewUrl;
     payloadChunks.forEach((chunk, index) => {
       properties[`_customization_payload_${index + 1}`] = chunk;
     });

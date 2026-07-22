@@ -381,6 +381,406 @@ function decodeHtmlEntities(value) {
     .replace(/&gt;/g, ">");
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function escapeScriptJson(value) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+}
+
+function renderProductionPreviewPage({ customizationId, order, lineItem, payload }) {
+  const bootstrap = { customizationId, order, lineItem, payload };
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Production Preview</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --navy: #10295c;
+        --gold: #c8931b;
+        --line: #e7dcc5;
+        --surface: #ffffff;
+        --surface-soft: #fffaf0;
+        --text: #23395d;
+        --muted: #6f7b92;
+        --shadow: 0 18px 48px rgba(16, 41, 92, 0.12);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Arial, sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top, rgba(200, 147, 27, 0.15), transparent 30%),
+          linear-gradient(180deg, #fffaf0 0%, #fff 100%);
+      }
+      .page {
+        max-width: 1560px;
+        margin: 0 auto;
+        padding: 28px;
+      }
+      .panel {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 32px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+      .panel__head {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        align-items: flex-start;
+        padding: 32px 34px 26px;
+      }
+      .panel__title {
+        margin: 0 0 10px;
+        font-size: clamp(32px, 4vw, 58px);
+        line-height: 1;
+        color: var(--navy);
+      }
+      .meta {
+        display: grid;
+        gap: 6px;
+        font-size: 15px;
+      }
+      .meta strong {
+        color: var(--navy);
+      }
+      .actions {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .button {
+        appearance: none;
+        border-radius: 999px;
+        min-height: 58px;
+        padding: 0 28px;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        border: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+      }
+      .button:hover {
+        transform: translateY(-1px);
+      }
+      .button--primary {
+        background: linear-gradient(135deg, var(--gold) 0%, #d7a12d 100%);
+        color: #fff;
+        box-shadow: 0 14px 30px rgba(200, 147, 27, 0.25);
+      }
+      .button--ghost {
+        background: #fff;
+        color: var(--navy);
+        border: 1px solid rgba(16, 41, 92, 0.15);
+      }
+      .panel__body {
+        border-top: 1px solid var(--line);
+        padding: 34px;
+      }
+      .preview-shell {
+        min-height: 540px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: linear-gradient(180deg, #ffffff 0%, var(--surface-soft) 100%);
+        padding: 30px;
+      }
+      canvas {
+        display: block;
+        max-width: 100%;
+        max-height: 72vh;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 16px 40px rgba(16, 41, 92, 0.14);
+      }
+      .notice {
+        font-size: 18px;
+        color: var(--muted);
+      }
+      @media (max-width: 900px) {
+        .page {
+          padding: 16px;
+        }
+        .panel {
+          border-radius: 24px;
+        }
+        .panel__head,
+        .panel__body {
+          padding: 22px;
+        }
+        .actions {
+          width: 100%;
+          justify-content: flex-start;
+        }
+        .button {
+          width: 100%;
+        }
+        .preview-shell {
+          min-height: 320px;
+          padding: 18px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <section class="panel">
+        <div class="panel__head">
+          <div>
+            <h1 class="panel__title">Production Preview</h1>
+            <div class="meta">
+              <div><strong>Product:</strong> ${escapeHtml(lineItem?.title || "Customization preview")}</div>
+              <div><strong>Order:</strong> ${escapeHtml(order?.name || "")}</div>
+              <div><strong>Customization ID:</strong> ${escapeHtml(customizationId)}</div>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="button" class="button button--primary" id="downloadPng">Download PNG</button>
+            <button type="button" class="button button--ghost" id="closePage">Close</button>
+          </div>
+        </div>
+        <div class="panel__body">
+          <div class="preview-shell" id="previewShell">
+            <div class="notice">Rendering preview...</div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script id="amzcustom-production-data" type="application/json">${escapeScriptJson(bootstrap)}</script>
+    <script>
+      (() => {
+        const bootstrap = JSON.parse(document.getElementById("amzcustom-production-data").textContent);
+        const previewModel = bootstrap?.payload?.previewModel;
+        const previewShell = document.getElementById("previewShell");
+        const downloadButton = document.getElementById("downloadPng");
+        const closeButton = document.getElementById("closePage");
+        const loadedFonts = new Set();
+        const imageCache = new Map();
+        let renderedCanvas = null;
+
+        closeButton.addEventListener("click", () => {
+          if (window.history.length > 1) {
+            window.history.back();
+            return;
+          }
+          window.close();
+        });
+
+        function ratioRect(rect, width, height) {
+          return {
+            x: rect.x * width,
+            y: rect.y * height,
+            width: rect.width * width,
+            height: rect.height * height
+          };
+        }
+
+        async function ensureFont(layer) {
+          const key = \`\${layer.fontFamily || ""}|\${layer.fontUrl || ""}|\${layer.fontType || ""}\`;
+          if (!key || loadedFonts.has(key)) return;
+          loadedFonts.add(key);
+          if (layer.fontUrl && "FontFace" in window) {
+            try {
+              const face = new FontFace(layer.fontFamily || "Arial", \`url(\${JSON.stringify(layer.fontUrl).slice(1, -1)})\`);
+              const loaded = await face.load();
+              document.fonts.add(loaded);
+              return;
+            } catch {}
+          }
+          if (/googlefont/i.test(layer.fontType || "") && layer.fontFamily) {
+            const href = \`https://fonts.googleapis.com/css2?family=\${encodeURIComponent(layer.fontFamily).replace(/%20/g, "+")}&display=swap\`;
+            if (![...document.querySelectorAll("link[href]")].some((link) => link.href === href)) {
+              const link = document.createElement("link");
+              link.rel = "stylesheet";
+              link.href = href;
+              document.head.appendChild(link);
+            }
+            if (document.fonts?.ready) {
+              try {
+                await document.fonts.ready;
+              } catch {}
+            }
+          }
+        }
+
+        async function loadImage(url) {
+          const key = String(url || "");
+          if (!key) throw new Error("Missing image URL.");
+          if (!imageCache.has(key)) {
+            imageCache.set(key, new Promise((resolve, reject) => {
+              const image = new Image();
+              image.crossOrigin = "anonymous";
+              image.onload = () => resolve(image);
+              image.onerror = () => reject(new Error(\`Failed to load image: \${key}\`));
+              image.src = key;
+            }).catch((error) => {
+              imageCache.delete(key);
+              throw error;
+            }));
+          }
+          return imageCache.get(key);
+        }
+
+        async function resolveCanvasSize(model) {
+          const baseWidth = Math.max(1200, Number(model.width || 1200));
+          const aspect = Math.max(0.1, Number(model.height || 1) / Math.max(1, Number(model.width || 1)));
+          let width = baseWidth;
+          for (const layer of model.layers || []) {
+            if (layer.type !== "image" || !layer.rect?.width) continue;
+            try {
+              const image = await loadImage(layer.src);
+              const candidate = image.naturalWidth / Math.max(layer.rect.width, 0.01);
+              width = Math.max(width, candidate);
+            } catch {}
+          }
+          width = Math.min(Math.round(width), 2400);
+          return {
+            width,
+            height: Math.max(1, Math.round(width * aspect))
+          };
+        }
+
+        async function render(model) {
+          if (!model?.layers?.length) {
+            previewShell.innerHTML = '<div class="notice">No renderable preview data is stored for this customization.</div>';
+            downloadButton.disabled = true;
+            return;
+          }
+
+          const { width, height } = await resolveCanvasSize(model);
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const context = canvas.getContext("2d");
+          context.fillStyle = model.background || "#ffffff";
+          context.fillRect(0, 0, canvas.width, canvas.height);
+
+          const textLayers = (model.layers || []).filter((layer) => layer.type === "text");
+          await Promise.all(textLayers.map(ensureFont));
+
+          for (const layer of model.layers || []) {
+            if (layer.type === "image") {
+              const image = await loadImage(layer.src);
+              const rect = ratioRect(layer.rect, canvas.width, canvas.height);
+              context.drawImage(image, rect.x, rect.y, rect.width, rect.height);
+              continue;
+            }
+            if (layer.type === "clipped-image") {
+              const image = await loadImage(layer.src);
+              const clipRect = ratioRect(layer.clipRect, canvas.width, canvas.height);
+              const imageRect = ratioRect(layer.imageRect, canvas.width, canvas.height);
+              context.save();
+              context.beginPath();
+              context.rect(clipRect.x, clipRect.y, clipRect.width, clipRect.height);
+              context.clip();
+              context.drawImage(image, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
+              context.restore();
+              continue;
+            }
+            if (layer.type === "text") {
+              const rect = ratioRect(layer.rect, canvas.width, canvas.height);
+              const lines = String(layer.text || "").split(/\\r?\\n/);
+              const fontSize = Math.max(10, (Number(layer.fontSizeRatio) || 0.05) * canvas.width);
+              const lineHeight = Math.max(fontSize * 1.18, (Number(layer.lineHeightRatio) || 0.06) * canvas.height);
+              context.save();
+              context.fillStyle = layer.color || "#000000";
+              context.font = \`\${fontSize}px "\${String(layer.fontFamily || "Arial").replace(/"/g, '\\"')}", Arial, sans-serif\`;
+              context.textAlign = "center";
+              context.textBaseline = "middle";
+              if (layer.singleLine) {
+                context.fillText(lines.join(" ").replace(/\\s+/g, " "), rect.x + rect.width / 2, rect.y + rect.height / 2, rect.width);
+              } else {
+                lines.forEach((line, index) => {
+                  context.fillText(
+                    line,
+                    rect.x + rect.width / 2,
+                    rect.y + rect.height / 2 + (index - (lines.length - 1) / 2) * lineHeight,
+                    rect.width
+                  );
+                });
+              }
+              context.restore();
+            }
+          }
+
+          renderedCanvas = canvas;
+          previewShell.innerHTML = "";
+          previewShell.appendChild(canvas);
+        }
+
+        downloadButton.addEventListener("click", async () => {
+          if (!renderedCanvas) return;
+          const blob = await new Promise((resolve) => renderedCanvas.toBlob(resolve, "image/png"));
+          if (!blob) return;
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = \`production-preview-\${bootstrap.customizationId || "customization"}.png\`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+
+        render(previewModel).catch((error) => {
+          previewShell.innerHTML = \`<div class="notice">\${String(error?.message || error || "Could not render preview.")}</div>\`;
+          downloadButton.disabled = true;
+        });
+      })();
+    </script>
+  </body>
+</html>`;
+}
+
+async function handleProductionPreview(req, res, requestUrl) {
+  try {
+    const customizationId = String(requestUrl.searchParams.get("customization_id") || "").trim();
+    if (!customizationId) throw new Error("Missing customization_id.");
+    const result = await new ShopifyAdmin().findCustomizationById(customizationId);
+    if (!result) {
+      jsonResponse(res, 404, { ok: false, error: "Customization not found in recent orders." });
+      return;
+    }
+    const body = renderProductionPreviewPage({
+      customizationId,
+      order: result.order,
+      lineItem: result.lineItem,
+      payload: result.payload
+    });
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "content-length": Buffer.byteLength(body),
+      "cache-control": "no-store"
+    });
+    res.end(body);
+  } catch (error) {
+    jsonResponse(res, 400, { ok: false, error: error.message });
+  }
+}
+
 function validateCustomFormUrl(rawUrl) {
   let parsed;
   try {
@@ -1194,6 +1594,11 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && (requestUrl.pathname === "/api/shopify/upload" || requestUrl.pathname === "/api/shopify/proxy/upload")) {
     handleShopifyUpload(req, res, requestUrl);
+    return;
+  }
+
+  if (req.method === "GET" && (requestUrl.pathname === "/api/shopify/proxy/production-preview" || requestUrl.pathname === "/production-preview")) {
+    handleProductionPreview(req, res, requestUrl);
     return;
   }
 

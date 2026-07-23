@@ -295,6 +295,14 @@ function storefrontAuthorized(req, requestUrl) {
   return signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 
+function previewAuthorized(req, requestUrl) {
+  const hasOrderId = String(requestUrl.searchParams.get("order_id") || "").trim().length > 0;
+  if (!hasOrderId && storefrontAuthorized(req, requestUrl)) return true;
+  const secret = process.env.CUSTOMIZER_PREVIEW_SECRET || process.env.CUSTOMIZER_ADMIN_SECRET || "";
+  if (!secret) return false;
+  return req.headers.authorization === `Bearer ${secret}`;
+}
+
 async function handleShopifyUpload(req, res, requestUrl) {
   const startedAt = Date.now();
   try {
@@ -755,15 +763,558 @@ function renderProductionPreviewPage({ customizationId, order, lineItem, payload
 </html>`;
 }
 
-async function handleProductionPreview(req, res, requestUrl) {
+function renderOrderProductionPreviewPage({ order, items }) {
+  const bootstrap = { order, items };
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Order Production Previews</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --navy: #10295c;
+        --gold: #c8931b;
+        --line: #e7dcc5;
+        --surface: #ffffff;
+        --surface-soft: #fffaf0;
+        --text: #23395d;
+        --muted: #6f7b92;
+        --shadow: 0 18px 48px rgba(16, 41, 92, 0.12);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Arial, sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top, rgba(200, 147, 27, 0.15), transparent 30%),
+          linear-gradient(180deg, #fffaf0 0%, #fff 100%);
+      }
+      .page {
+        max-width: 1680px;
+        margin: 0 auto;
+        padding: 28px;
+      }
+      .header {
+        margin-bottom: 24px;
+        padding: 28px 30px;
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+      .header__title {
+        margin: 0 0 10px;
+        font-size: clamp(28px, 3.6vw, 48px);
+        line-height: 1.05;
+        color: var(--navy);
+      }
+      .header__meta {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+      }
+      .items {
+        display: grid;
+        gap: 22px;
+      }
+      .item {
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .item__head {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: flex-start;
+        padding: 28px 30px 20px;
+      }
+      .item__title {
+        margin: 0 0 10px;
+        font-size: clamp(22px, 2.8vw, 34px);
+        line-height: 1.1;
+        color: var(--navy);
+      }
+      .item__meta {
+        display: grid;
+        gap: 8px;
+        color: var(--muted);
+      }
+      .item__meta strong {
+        color: var(--navy);
+      }
+      .item__actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .button {
+        appearance: none;
+        border-radius: 999px;
+        min-height: 52px;
+        padding: 0 24px;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        border: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+      }
+      .button:hover { transform: translateY(-1px); }
+      .button--primary {
+        background: linear-gradient(135deg, var(--gold) 0%, #d7a12d 100%);
+        color: #fff;
+        box-shadow: 0 14px 30px rgba(200, 147, 27, 0.25);
+      }
+      .button--ghost {
+        background: #fff;
+        color: var(--navy);
+        border: 1px solid rgba(16, 41, 92, 0.15);
+      }
+      .item__body {
+        display: grid;
+        grid-template-columns: minmax(360px, 1.2fr) minmax(280px, 0.8fr);
+        gap: 24px;
+        padding: 0 30px 30px;
+      }
+      .preview-shell {
+        min-height: 520px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: linear-gradient(180deg, #ffffff 0%, var(--surface-soft) 100%);
+        padding: 24px;
+      }
+      canvas {
+        display: block;
+        max-width: 100%;
+        max-height: 70vh;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 16px 40px rgba(16, 41, 92, 0.14);
+      }
+      .details {
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: #fff;
+        padding: 22px 24px;
+      }
+      .details h3 {
+        margin: 0 0 16px;
+        font-size: 20px;
+        color: var(--navy);
+      }
+      .detail-list {
+        display: grid;
+        gap: 12px;
+      }
+      .detail-row {
+        display: grid;
+        gap: 4px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid rgba(16, 41, 92, 0.08);
+      }
+      .detail-row:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+      }
+      .detail-row__label {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .detail-row__value,
+      .detail-row__value a {
+        color: var(--text);
+        word-break: break-word;
+      }
+      .empty {
+        padding: 40px;
+        border: 1px dashed rgba(16, 41, 92, 0.18);
+        border-radius: 20px;
+        color: var(--muted);
+        background: rgba(255,255,255,0.7);
+      }
+      @media (max-width: 1080px) {
+        .item__body {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-width: 900px) {
+        .page { padding: 16px; }
+        .header, .item { border-radius: 22px; }
+        .header, .item__head, .item__body { padding-left: 20px; padding-right: 20px; }
+        .item__head { padding-top: 20px; padding-bottom: 18px; }
+        .item__actions { width: 100%; justify-content: flex-start; }
+        .button { width: 100%; }
+        .preview-shell { min-height: 280px; padding: 16px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <section class="header">
+        <h1 class="header__title">Order Production Previews</h1>
+        <div class="header__meta">
+          <div><strong style="color: var(--navy);">Order:</strong> ${escapeHtml(order?.name || "")}</div>
+          <div><strong style="color: var(--navy);">Order ID:</strong> ${escapeHtml(order?.id || "")}</div>
+          <div><strong style="color: var(--navy);">Customized items:</strong> ${escapeHtml(items?.length || 0)}</div>
+        </div>
+      </section>
+      <section class="items" id="previewList"></section>
+    </div>
+    <script id="amzcustom-order-preview-data" type="application/json">${escapeScriptJson(bootstrap)}</script>
+    <script>
+      (() => {
+        const bootstrap = JSON.parse(document.getElementById("amzcustom-order-preview-data").textContent);
+        const root = document.getElementById("previewList");
+        const items = bootstrap?.items || [];
+        const loadedFonts = new Set();
+        const imageCache = new Map();
+        const renderedCanvases = new Map();
+
+        function ratioRect(rect, width, height) {
+          return {
+            x: rect.x * width,
+            y: rect.y * height,
+            width: rect.width * width,
+            height: rect.height * height
+          };
+        }
+
+        async function ensureFont(layer) {
+          const key = \`\${layer.fontFamily || ""}|\${layer.fontUrl || ""}|\${layer.fontType || ""}\`;
+          if (!key || loadedFonts.has(key)) return;
+          loadedFonts.add(key);
+          if (layer.fontUrl && "FontFace" in window) {
+            try {
+              const face = new FontFace(layer.fontFamily || "Arial", \`url(\${JSON.stringify(layer.fontUrl).slice(1, -1)})\`);
+              const loaded = await face.load();
+              document.fonts.add(loaded);
+              return;
+            } catch {}
+          }
+          if (/googlefont/i.test(layer.fontType || "") && layer.fontFamily) {
+            const href = \`https://fonts.googleapis.com/css2?family=\${encodeURIComponent(layer.fontFamily).replace(/%20/g, "+")}&display=swap\`;
+            if (![...document.querySelectorAll("link[href]")].some((link) => link.href === href)) {
+              const link = document.createElement("link");
+              link.rel = "stylesheet";
+              link.href = href;
+              document.head.appendChild(link);
+            }
+            if (document.fonts?.ready) {
+              try { await document.fonts.ready; } catch {}
+            }
+          }
+        }
+
+        async function loadImage(url) {
+          const key = String(url || "");
+          if (!key) throw new Error("Missing image URL.");
+          if (!imageCache.has(key)) {
+            imageCache.set(key, new Promise((resolve, reject) => {
+              const image = new Image();
+              image.crossOrigin = "anonymous";
+              image.onload = () => resolve(image);
+              image.onerror = () => reject(new Error(\`Failed to load image: \${key}\`));
+              image.src = key;
+            }).catch((error) => {
+              imageCache.delete(key);
+              throw error;
+            }));
+          }
+          return imageCache.get(key);
+        }
+
+        async function resolveCanvasSize(model) {
+          const baseWidth = Math.max(1200, Number(model.width || 1200));
+          const aspect = Math.max(0.1, Number(model.height || 1) / Math.max(1, Number(model.width || 1)));
+          let width = baseWidth;
+          for (const layer of model.layers || []) {
+            if (layer.type !== "image" || !layer.rect?.width) continue;
+            try {
+              const image = await loadImage(layer.src);
+              const candidate = image.naturalWidth / Math.max(layer.rect.width, 0.01);
+              width = Math.max(width, candidate);
+            } catch {}
+          }
+          width = Math.min(Math.round(width), 2400);
+          return { width, height: Math.max(1, Math.round(width * aspect)) };
+        }
+
+        async function renderToCanvas(model) {
+          const { width, height } = await resolveCanvasSize(model);
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const context = canvas.getContext("2d");
+          context.fillStyle = model.background || "#ffffff";
+          context.fillRect(0, 0, canvas.width, canvas.height);
+
+          const textLayers = (model.layers || []).filter((layer) => layer.type === "text");
+          await Promise.all(textLayers.map(ensureFont));
+
+          for (const layer of model.layers || []) {
+            if (layer.type === "image") {
+              const image = await loadImage(layer.src);
+              const rect = ratioRect(layer.rect, canvas.width, canvas.height);
+              context.drawImage(image, rect.x, rect.y, rect.width, rect.height);
+              continue;
+            }
+            if (layer.type === "clipped-image") {
+              const image = await loadImage(layer.src);
+              const clipRect = ratioRect(layer.clipRect, canvas.width, canvas.height);
+              const imageRect = ratioRect(layer.imageRect, canvas.width, canvas.height);
+              context.save();
+              context.beginPath();
+              context.rect(clipRect.x, clipRect.y, clipRect.width, clipRect.height);
+              context.clip();
+              context.drawImage(image, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
+              context.restore();
+              continue;
+            }
+            if (layer.type === "text") {
+              const rect = ratioRect(layer.rect, canvas.width, canvas.height);
+              const lines = String(layer.text || "").split(/\\r?\\n/);
+              const fontSize = Math.max(10, (Number(layer.fontSizeRatio) || 0.05) * canvas.width);
+              const lineHeight = Math.max(fontSize * 1.18, (Number(layer.lineHeightRatio) || 0.06) * canvas.height);
+              context.save();
+              context.fillStyle = layer.color || "#000000";
+              context.font = \`\${fontSize}px "\${String(layer.fontFamily || "Arial").replace(/"/g, '\\"')}", Arial, sans-serif\`;
+              context.textAlign = "center";
+              context.textBaseline = "middle";
+              if (layer.singleLine) {
+                context.fillText(lines.join(" ").replace(/\\s+/g, " "), rect.x + rect.width / 2, rect.y + rect.height / 2, rect.width);
+              } else {
+                lines.forEach((line, index) => {
+                  context.fillText(
+                    line,
+                    rect.x + rect.width / 2,
+                    rect.y + rect.height / 2 + (index - (lines.length - 1) / 2) * lineHeight,
+                    rect.width
+                  );
+                });
+              }
+              context.restore();
+            }
+          }
+          return canvas;
+        }
+
+        function propertyRows(item) {
+          const rows = [];
+          for (const property of item.properties || []) {
+            rows.push(\`<div class="detail-row"><div class="detail-row__label">\${property.key}</div><div class="detail-row__value">\${property.value}</div></div>\`);
+          }
+          for (const upload of item.uploads || []) {
+            const name = upload.filename || "Uploaded file";
+            const value = upload.url
+              ? \`<a href="\${upload.url}" target="_blank" rel="noopener">\${name}</a>\`
+              : name;
+            rows.push(\`<div class="detail-row"><div class="detail-row__label">Original upload</div><div class="detail-row__value">\${value}</div></div>\`);
+          }
+          if (!rows.length) {
+            rows.push('<div class="detail-row"><div class="detail-row__value">No additional customization fields.</div></div>');
+          }
+          return rows.join("");
+        }
+
+        function escapeText(value) {
+          return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+        }
+
+        if (!items.length) {
+          root.innerHTML = '<div class="empty">No customized items with renderable previews were found in this order.</div>';
+          return;
+        }
+
+        root.innerHTML = items.map((item, index) => \`
+          <article class="item" data-index="\${index}">
+            <div class="item__head">
+              <div>
+                <h2 class="item__title">\${escapeText(item.lineItem?.title || "Customized item")}</h2>
+                <div class="item__meta">
+                  <div><strong>Customization ID:</strong> \${escapeText(item.customizationId || "")}</div>
+                  <div><strong>Line item:</strong> \${escapeText(item.lineItem?.id || "")}</div>
+                  <div><strong>Quantity:</strong> \${escapeText(item.lineItem?.quantity || "")}</div>
+                </div>
+              </div>
+              <div class="item__actions">
+                <button type="button" class="button button--primary" data-download-index="\${index}">Download PNG</button>
+              </div>
+            </div>
+            <div class="item__body">
+              <div class="preview-shell" data-preview-index="\${index}">
+                <div class="notice">Rendering preview...</div>
+              </div>
+              <aside class="details">
+                <h3>Production details</h3>
+                <div class="detail-list">\${propertyRows(item)}</div>
+              </aside>
+            </div>
+          </article>
+        \`).join("");
+
+        items.forEach((item, index) => {
+          const shell = root.querySelector(\`[data-preview-index="\${index}"]\`);
+          renderToCanvas(item?.payload?.previewModel).then((canvas) => {
+            renderedCanvases.set(index, canvas);
+            shell.innerHTML = "";
+            shell.appendChild(canvas);
+          }).catch((error) => {
+            shell.innerHTML = \`<div class="notice">\${escapeText(error?.message || "Could not render preview.")}</div>\`;
+          });
+        });
+
+        root.addEventListener("click", async (event) => {
+          const button = event.target.closest("[data-download-index]");
+          if (!button) return;
+          const index = Number(button.getAttribute("data-download-index"));
+          const canvas = renderedCanvases.get(index);
+          if (!canvas) return;
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+          if (!blob) return;
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = \`production-preview-\${items[index]?.customizationId || index}.png\`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+      })();
+    </script>
+  </body>
+</html>`;
+}
+
+function previewBaseUrl(req) {
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost";
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  return `${proto}://${host}`;
+}
+
+function productionPreviewLink(req, customizationId) {
+  return `${previewBaseUrl(req)}/apps/amazon-customizer/production-preview?customization_id=${encodeURIComponent(String(customizationId || ""))}`;
+}
+
+function serializePreviewItem(req, item) {
+  return {
+    customizationId: item.customizationId || item.presentation?.id || "",
+    lineItem: item.lineItem || {},
+    productionPreviewUrl: productionPreviewLink(req, item.customizationId || item.presentation?.id || ""),
+    customization: item.presentation || {
+      id: item.customizationId || "",
+      schemaVersion: Number(item.attributes?._customization_schema || 1),
+      payloadEncoding: String(item.attributes?._customization_payload_encoding || ""),
+      visibleProperties: item.properties || [],
+      uploads: item.uploads || [],
+      decodedPayload: item.payload || null
+    }
+  };
+}
+
+async function handleProductionPreviewData(req, res, requestUrl) {
   try {
+    if (!previewAuthorized(req, requestUrl)) throw new Error("Unauthorized preview request.");
     const customizationId = String(requestUrl.searchParams.get("customization_id") || "").trim();
-    if (!customizationId) throw new Error("Missing customization_id.");
-    const result = await new ShopifyAdmin().findCustomizationById(customizationId);
+    const orderId = String(requestUrl.searchParams.get("order_id") || "").trim();
+    const admin = new ShopifyAdmin();
+
+    if (orderId && !customizationId) {
+      const orderResult = await admin.orderCustomizations(orderId);
+      if (!orderResult) {
+        jsonResponse(res, 404, { ok: false, error: "Order not found." });
+        return;
+      }
+      jsonResponse(res, 200, {
+        ok: true,
+        mode: "order",
+        order: orderResult.order,
+        items: (orderResult.items || []).map((item) => serializePreviewItem(req, item))
+      });
+      return;
+    }
+
+    if (!customizationId) throw new Error("Missing customization_id or order_id.");
+    const result = await admin.findCustomizationById(customizationId);
     if (!result) {
       jsonResponse(res, 404, { ok: false, error: "Customization not found in recent orders." });
       return;
     }
+
+    jsonResponse(res, 200, {
+      ok: true,
+      mode: "customization",
+      order: result.order,
+      item: serializePreviewItem(req, {
+        customizationId,
+        lineItem: result.lineItem,
+        attributes: result.attributes,
+        properties: result.properties,
+        payload: result.payload,
+        uploads: new ShopifyAdmin().customizationUploads(result.payload),
+        presentation: result.presentation
+      })
+    });
+  } catch (error) {
+    jsonResponse(res, 400, { ok: false, error: error.message });
+  }
+}
+
+async function handleProductionPreview(req, res, requestUrl) {
+  try {
+    if (!previewAuthorized(req, requestUrl)) throw new Error("Unauthorized preview request.");
+    const customizationId = String(requestUrl.searchParams.get("customization_id") || "").trim();
+    const orderId = String(requestUrl.searchParams.get("order_id") || "").trim();
+    const admin = new ShopifyAdmin();
+
+    if (orderId && !customizationId) {
+      const orderResult = await admin.orderCustomizations(orderId);
+      if (!orderResult) {
+        jsonResponse(res, 404, { ok: false, error: "Order not found." });
+        return;
+      }
+      const body = renderOrderProductionPreviewPage({
+        order: orderResult.order,
+        items: orderResult.items
+      });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "content-length": Buffer.byteLength(body),
+        "cache-control": "no-store"
+      });
+      res.end(body);
+      return;
+    }
+
+    if (!customizationId) throw new Error("Missing customization_id or order_id.");
+    const result = await admin.findCustomizationById(customizationId);
+    if (!result) {
+      jsonResponse(res, 404, { ok: false, error: "Customization not found in recent orders." });
+      return;
+    }
+
     const body = renderProductionPreviewPage({
       customizationId,
       order: result.order,
@@ -1599,6 +2150,11 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "GET" && (requestUrl.pathname === "/api/shopify/proxy/production-preview" || requestUrl.pathname === "/production-preview")) {
     handleProductionPreview(req, res, requestUrl);
+    return;
+  }
+
+  if (req.method === "GET" && (requestUrl.pathname === "/api/shopify/proxy/production-preview-data" || requestUrl.pathname === "/production-preview-data")) {
+    handleProductionPreviewData(req, res, requestUrl);
     return;
   }
 

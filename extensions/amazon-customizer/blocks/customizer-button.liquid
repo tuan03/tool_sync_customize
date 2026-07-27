@@ -14,6 +14,8 @@
     data-currency-code="{{ localization.country.currency.iso_code | default: cart.currency.iso_code | default: shop.currency }}"
     data-country-code="{{ localization.country.iso_code | default: 'US' }}"
     data-config="{{ customizer_metafield.value | json | escape }}"
+    data-product-options="{{ customizer_product.options | json | escape }}"
+    data-product-variants="{{ customizer_product.variants | json | escape }}"
     data-upload-url="{{ block.settings.upload_path | escape }}"
   >
     <button class="amzcustom-open" type="button">{{ block.settings.button_label | escape }}</button>

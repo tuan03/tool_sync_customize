@@ -160,6 +160,23 @@ async function handleAdminStatus(req, res) {
   });
 }
 
+async function handleShopifyAccessDiagnostics(req, res, requestUrl) {
+  try {
+    assertAdminAuthorized(req);
+    const admin = new ShopifyAdmin();
+    const diagnostics = await admin.accessDiagnostics(requestUrl.searchParams.get("order_id") || "");
+    jsonResponse(res, 200, { ok: true, diagnostics });
+  } catch (error) {
+    console.error("[ShopifyAdmin] Access diagnostics failed", {
+      shop: process.env.SHOPIFY_SHOP || "",
+      apiVersion: process.env.SHOPIFY_API_VERSION || "2026-04",
+      clientId: process.env.SHOPIFY_CLIENT_ID || "",
+      error: error.message,
+    });
+    jsonResponse(res, 400, { ok: false, error: error.message });
+  }
+}
+
 function assertAdminAuthorized(req) {
   if (process.env.CUSTOMIZER_ADMIN_SECRET && req.headers.authorization !== `Bearer ${process.env.CUSTOMIZER_ADMIN_SECRET}`) {
     throw new Error("Unauthorized admin request.");
@@ -361,7 +378,12 @@ async function handleShopifyUpload(req, res, requestUrl) {
     console.log("[Amazon Customizer][Server] Upload completed", { filename, mimeType: parsed.mimeType, bytes: parsed.buffer.length, elapsedMs: Date.now() - startedAt, fileId: file.id });
     jsonResponse(res, 200, { ok: true, file: { id: file.id, url: shopifyFileUrl(file), filename } });
   } catch (error) {
-    console.warn("[Amazon Customizer][Server] Upload failed", { elapsedMs: Date.now() - startedAt, error: error.message });
+    console.warn("[Amazon Customizer][Server] Upload failed", {
+      elapsedMs: Date.now() - startedAt,
+      error: error.message,
+      name: error.name,
+      stack: error.stack,
+    });
     jsonResponse(res, 400, { ok: false, error: error.message });
   }
 }
@@ -1278,6 +1300,15 @@ async function handleProductionPreviewData(req, res, requestUrl) {
       })
     });
   } catch (error) {
+    console.error("[ProductionPreviewData] request failed", {
+      path: requestUrl.pathname,
+      orderId: requestUrl.searchParams.get("order_id") || "",
+      customizationId: requestUrl.searchParams.get("customization_id") || "",
+      shop: process.env.SHOPIFY_SHOP || "",
+      apiVersion: process.env.SHOPIFY_API_VERSION || "2026-04",
+      clientId: process.env.SHOPIFY_CLIENT_ID || "",
+      error: error.message,
+    });
     jsonResponse(res, 400, { ok: false, error: error.message });
   }
 }
@@ -1328,6 +1359,15 @@ async function handleProductionPreview(req, res, requestUrl) {
     });
     res.end(body);
   } catch (error) {
+    console.error("[ProductionPreview] request failed", {
+      path: requestUrl.pathname,
+      orderId: requestUrl.searchParams.get("order_id") || "",
+      customizationId: requestUrl.searchParams.get("customization_id") || "",
+      shop: process.env.SHOPIFY_SHOP || "",
+      apiVersion: process.env.SHOPIFY_API_VERSION || "2026-04",
+      clientId: process.env.SHOPIFY_CLIENT_ID || "",
+      error: error.message,
+    });
     jsonResponse(res, 400, { ok: false, error: error.message });
   }
 }
@@ -2125,6 +2165,11 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "GET" && requestUrl.pathname === "/api/admin/status") {
     handleAdminStatus(req, res).catch((error) => jsonResponse(res, 500, { ok: false, error: error.message }));
+    return;
+  }
+
+  if (req.method === "GET" && requestUrl.pathname === "/api/admin/shopify-access-diagnostics") {
+    handleShopifyAccessDiagnostics(req, res, requestUrl).catch((error) => jsonResponse(res, 500, { ok: false, error: error.message }));
     return;
   }
 

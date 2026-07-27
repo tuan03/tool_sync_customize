@@ -204,6 +204,31 @@
       return null;
     }
   }
+  function parseRootJsonData(root, key, fallback) {
+    const value = root?.dataset?.[key];
+    if (!value) return fallback;
+    try {
+      return JSON.parse(value);
+    } catch (_error) {
+      return fallback;
+    }
+  }
+  function rootProductOptionNames(root) {
+    return (parseRootJsonData(root, "productOptions", []) || [])
+      .map((option, index) => normalizeVariantOptionText(typeof option === "string" ? option : option?.name || option?.label || `Option ${index + 1}`))
+      .filter(Boolean);
+  }
+  function variantOptionsFromObject(variant) {
+    if (!variant) return [];
+    if (Array.isArray(variant.options)) return variant.options;
+    return [variant.option1, variant.option2, variant.option3].filter(Boolean);
+  }
+  function selectedVariantFromRootData(root) {
+    const variantId = currentVariantSelection(root).variantId;
+    if (!variantId) return null;
+    const variants = parseRootJsonData(root, "productVariants", []) || [];
+    return variants.find((variant) => String(variant?.id || "") === String(variantId)) || null;
+  }
   function currentVariantSelection(root) {
     const form = productFormRoot(root);
     const variantInput = form?.querySelector('input[name="id"]');
@@ -227,10 +252,21 @@
   function normalizeVariantOptionText(value) {
     return String(value || "").replace(/\s+/g, " ").replace(/[:*]+$/g, "").trim();
   }
+  function selectedControlValue(control) {
+    if (!control) return "";
+    if (control.tagName === "SELECT") {
+      const option = control.options?.[control.selectedIndex];
+      return normalizeVariantOptionText(option?.textContent || option?.value || control.value);
+    }
+    const id = control.id || "";
+    const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`) : null;
+    return normalizeVariantOptionText(label?.textContent || control.value || control.getAttribute("aria-label") || "");
+  }
   function variantOptionNameFromControl(control, index) {
     const nameAttr = String(control?.getAttribute("name") || "");
     const bracketMatch = nameAttr.match(/options\[(.+?)\]/i);
     if (bracketMatch?.[1]) return normalizeVariantOptionText(bracketMatch[1]);
+    if (/^option\d+$/i.test(nameAttr)) return `Option ${Number(nameAttr.replace(/\D/g, "")) || index + 1}`;
     const container = control?.closest("fieldset, .product-form__input, .variant-picker__option, [data-option-name]");
     const dataName = control?.getAttribute("data-option-name") || container?.getAttribute("data-option-name");
     if (dataName) return normalizeVariantOptionText(dataName);
@@ -240,14 +276,51 @@
     if (label?.textContent) return normalizeVariantOptionText(label.textContent.split(":")[0]);
     return `Option ${index + 1}`;
   }
-  function selectedVariantOptionPairs(root) {
+  function selectedVariantOptionNames(root, count = 0) {
     const context = variantSelectsRoot(root) || variantPickerRoot(root) || productFormRoot(root) || root;
-    const controls = Array.from(context?.querySelectorAll('select[name^="options["], input[type="radio"][name^="options["]:checked') || []);
+    const names = [];
+    const controls = Array.from(context?.querySelectorAll('select[name^="options["], input[name^="options["], select[name^="option"], input[name^="option"]') || []);
+    const grouped = new Map();
+    controls.forEach((control, index) => {
+      const name = variantOptionNameFromControl(control, index);
+      if (name && !grouped.has(name)) grouped.set(name, control);
+    });
+    grouped.forEach((control, name) => names.push(name));
+    const selectedVariant = parseSelectedVariantJson(root);
+    const optionNames = Array.isArray(selectedVariant?.optionNames) ? selectedVariant.optionNames : [];
+    optionNames.forEach((name) => {
+      const normalized = normalizeVariantOptionText(name);
+      if (normalized && !names.includes(normalized)) names.push(normalized);
+    });
+    while (names.length < count) names.push(`Option ${names.length + 1}`);
+    return names;
+  }
+  function selectedVariantOptionPairs(root) {
+    const rootVariant = selectedVariantFromRootData(root);
+    const rootValues = variantOptionsFromObject(rootVariant);
+    if (rootValues.length) {
+      const rootNames = rootProductOptionNames(root);
+      return rootValues
+        .map((value, index) => ({
+          name: rootNames[index] || `Option ${index + 1}`,
+          value: normalizeVariantOptionText(value)
+        }))
+        .filter((pair) => pair.name && pair.value && !/^default title$/i.test(pair.value));
+    }
+    const context = variantSelectsRoot(root) || variantPickerRoot(root) || productFormRoot(root) || root;
+    const controls = Array.from(context?.querySelectorAll([
+      'select[name^="options["]',
+      'input[type="radio"][name^="options["]:checked',
+      'select[name^="option"]',
+      'input[type="radio"][name^="option"]:checked',
+      'select[data-option-name]',
+      'input[type="radio"][data-option-name]:checked'
+    ].join(",")) || []);
     if (controls.length) {
       return controls
         .map((control, index) => ({
           name: variantOptionNameFromControl(control, index),
-          value: normalizeVariantOptionText(control.value)
+          value: selectedControlValue(control)
         }))
         .filter((pair) => pair.name && pair.value && !/^default title$/i.test(pair.value));
     }
@@ -255,9 +328,10 @@
     const values = Array.isArray(selectedVariant?.options)
       ? selectedVariant.options
       : [selectedVariant?.option1, selectedVariant?.option2, selectedVariant?.option3].filter(Boolean);
+    const names = selectedVariantOptionNames(root, values.length);
     return values
       .map((value, index) => ({
-        name: `Option ${index + 1}`,
+        name: names[index] || `Option ${index + 1}`,
         value: normalizeVariantOptionText(value)
       }))
       .filter((pair) => pair.value && !/^default title$/i.test(pair.value));
@@ -265,7 +339,7 @@
   function visibleVariantProperties(instance) {
     const properties = {};
     for (const pair of selectedVariantOptionPairs(instance?.root)) {
-      const key = `_Variant ${pair.name}`;
+      const key = pair.name;
       if (!properties[key]) properties[key] = pair.value;
     }
     return properties;
@@ -1542,6 +1616,7 @@
         fonts: instance.state.fonts,
         colors: instance.state.colors,
         images: uploadedImages,
+        variantOptions: selectedVariantOptionPairs(instance.root),
         imageTransforms: instance.state.imageTransforms,
         textTransforms: instance.state.textTransforms,
         placementOffsets: instance.state.placementOffsets

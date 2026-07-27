@@ -224,6 +224,52 @@
       basePrice: Number.isFinite(basePrice) ? basePrice : 0,
     };
   }
+  function normalizeVariantOptionText(value) {
+    return String(value || "").replace(/\s+/g, " ").replace(/[:*]+$/g, "").trim();
+  }
+  function variantOptionNameFromControl(control, index) {
+    const nameAttr = String(control?.getAttribute("name") || "");
+    const bracketMatch = nameAttr.match(/options\[(.+?)\]/i);
+    if (bracketMatch?.[1]) return normalizeVariantOptionText(bracketMatch[1]);
+    const container = control?.closest("fieldset, .product-form__input, .variant-picker__option, [data-option-name]");
+    const dataName = control?.getAttribute("data-option-name") || container?.getAttribute("data-option-name");
+    if (dataName) return normalizeVariantOptionText(dataName);
+    const legend = container?.querySelector("legend");
+    if (legend?.textContent) return normalizeVariantOptionText(legend.textContent);
+    const label = container?.querySelector(".form__label, label");
+    if (label?.textContent) return normalizeVariantOptionText(label.textContent.split(":")[0]);
+    return `Option ${index + 1}`;
+  }
+  function selectedVariantOptionPairs(root) {
+    const context = variantSelectsRoot(root) || variantPickerRoot(root) || productFormRoot(root) || root;
+    const controls = Array.from(context?.querySelectorAll('select[name^="options["], input[type="radio"][name^="options["]:checked') || []);
+    if (controls.length) {
+      return controls
+        .map((control, index) => ({
+          name: variantOptionNameFromControl(control, index),
+          value: normalizeVariantOptionText(control.value)
+        }))
+        .filter((pair) => pair.name && pair.value && !/^default title$/i.test(pair.value));
+    }
+    const selectedVariant = parseSelectedVariantJson(root);
+    const values = Array.isArray(selectedVariant?.options)
+      ? selectedVariant.options
+      : [selectedVariant?.option1, selectedVariant?.option2, selectedVariant?.option3].filter(Boolean);
+    return values
+      .map((value, index) => ({
+        name: `Option ${index + 1}`,
+        value: normalizeVariantOptionText(value)
+      }))
+      .filter((pair) => pair.value && !/^default title$/i.test(pair.value));
+  }
+  function visibleVariantProperties(instance) {
+    const properties = {};
+    for (const pair of selectedVariantOptionPairs(instance?.root)) {
+      const key = `_Variant ${pair.name}`;
+      if (!properties[key]) properties[key] = pair.value;
+    }
+    return properties;
+  }
   function basePrice(instance) {
     const value = currentVariantSelection(instance?.root).basePrice;
     return Number.isFinite(value) ? value : 0;
@@ -1558,6 +1604,7 @@
     }
   }
   function customizationProperties(instance, customizationId, payload) {
+    const variantProperties = visibleVariantProperties(instance);
     const visibleProperties = visibleCustomizationProperties(instance, payload.selections.images || {});
     const summary = "Customized product";
     const payloadEncoded = toBase64Unicode(JSON.stringify(payload));
@@ -1571,7 +1618,7 @@
       "_customization_payload_encoding": "base64-json",
       "_customization_payload_count": String(payloadChunks.length)
     };
-    Object.assign(properties, visibleProperties);
+    Object.assign(properties, variantProperties, visibleProperties);
     if (previewUrl) properties["Production preview"] = previewUrl;
     payloadChunks.forEach((chunk, index) => {
       properties[`_customization_payload_${index + 1}`] = chunk;

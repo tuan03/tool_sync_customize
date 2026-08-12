@@ -5,6 +5,14 @@ const { URL } = require("url");
 const crypto = require("crypto");
 const { normalizeAmazonConfig, byteSize, MAX_METAFIELD_BYTES, replaceAssetUrls } = require("./lib/amazon-config");
 const { ShopifyAdmin } = require("./lib/shopify-admin");
+const {
+  parseCustomizeVariantSource,
+  buildCustomizeVariantPlan,
+  productSetInput,
+  productFingerprint,
+  selectionKey,
+  combinations,
+} = require("./lib/customize-variants");
 const { configureProxy, proxyStatusWithLocation } = require("./lib/proxy");
 
 const PORT = Number(process.env.PORT || 3000);
@@ -39,6 +47,10 @@ const MIME_TYPES = {
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
 };
+
+function structuredLog(event, details = {}) {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...details }));
+}
 
 function jsonResponse(res, statusCode, payload) {
   const body = JSON.stringify(payload, null, 2);
@@ -385,6 +397,128 @@ async function handleShopifyUpload(req, res, requestUrl) {
       stack: error.stack,
     });
     jsonResponse(res, 400, { ok: false, error: error.message });
+  }
+}
+
+function customizeVariantRequestSource(body) {
+  const rawAmazonJson = body.rawAmazonJson || body.config;
+  if (!rawAmazonJson) throw new Error("Missing rawAmazonJson.");
+  return parseCustomizeVariantSource(rawAmazonJson, {
+    selection: Array.isArray(body.selection) ? body.selection : [],
+    selectionRules: Array.isArray(body.selectionRules) ? body.selectionRules : [],
+    priceMultiplier: body.priceMultiplier == null || body.priceMultiplier === "" ? 1 : body.priceMultiplier,
+  });
+}
+
+async function customizeVariantPreview(body) {
+  const source = customizeVariantRequestSource(body);
+  const parsed = {
+    source: source.source,
+    sourceFingerprint: source.sourceFingerprint,
+    groups: source.groups,
+    selectedGroups: source.selectedGroups,
+    defaultSelection: source.defaultSelection,
+    skipped: source.skipped,
+    unsupportedControls: source.unsupportedControls,
+    customizeCombinationCount: source.selectedGroups.length ? combinations(source.selectedGroups).length : 0,
+  };
+  if (!body.productId) return { ok: true, exact: false, parsed };
+  const admin = new ShopifyAdmin();
+  const product = await admin.productCustomizeVariantState(body.productId);
+  const plan = buildCustomizeVariantPlan(product, source, { profileSlug: body.profileSlug });
+  return { ok: plan.ok, exact: true, parsed, plan };
+}
+
+async function handleCustomizeVariantPreview(req, res) {
+  try {
+    assertAdminAuthorized(req);
+    const body = JSON.parse(await readRequestBody(req) || "{}");
+    const result = await customizeVariantPreview(body);
+    structuredLog("shopify_customize_variants_preview", {
+      ok: result.ok,
+      exact: result.exact,
+      productId: body.productId || null,
+      profileSlug: body.profileSlug || "",
+      groupCount: result.parsed.groups.length,
+      selectedGroupCount: result.parsed.selectedGroups.length,
+      targetVariantCount: result.plan && result.plan.summary.targetVariantCount || null,
+      blockerCount: result.plan && result.plan.blockers.length || 0,
+    });
+    jsonResponse(res, result.ok ? 200 : 400, result);
+  } catch (error) {
+    structuredLog("shopify_customize_variants_preview", { ok: false, error: error.message });
+    jsonResponse(res, 400, { ok: false, message: "Customize variant preview failed.", error: error.message });
+  }
+}
+
+async function handleCustomizeVariantSyncApi(req, res) {
+  try {
+    assertAdminAuthorized(req);
+    const body = JSON.parse(await readRequestBody(req) || "{}");
+    if (!body.productId) throw new Error("Missing productId.");
+    const source = customizeVariantRequestSource(body);
+    if (body.expectedSourceFingerprint && body.expectedSourceFingerprint !== source.sourceFingerprint) {
+      return jsonResponse(res, 409, { ok: false, conflict: true, message: "Amazon customize JSON changed after preview. Preview again before sync." });
+    }
+    const admin = new ShopifyAdmin();
+    const product = await admin.productCustomizeVariantState(body.productId);
+    const currentFingerprint = productFingerprint(product);
+    if (body.expectedProductFingerprint && body.expectedProductFingerprint !== currentFingerprint) {
+      return jsonResponse(res, 409, { ok: false, conflict: true, message: "Shopify product variants changed after preview. Reload and preview again before sync." });
+    }
+    const plan = buildCustomizeVariantPlan(product, source, { profileSlug: body.profileSlug });
+    if (!plan.ok) {
+      return jsonResponse(res, 400, { ok: false, message: "Customize variant plan is blocked.", blockers: plan.blockers, plan });
+    }
+    structuredLog("shopify_customize_variants_sync_request", {
+      productId: product.id,
+      profileSlug: body.profileSlug || "",
+      selectedGroupCount: plan.selectedGroups.length,
+      targetVariantCount: plan.summary.targetVariantCount,
+      createdCount: plan.summary.createdCount,
+      updatedCount: plan.summary.updatedCount,
+      deletedCount: plan.summary.deletedCount,
+    });
+    const synchronous = plan.summary.targetVariantCount <= 100;
+    const syncResult = await admin.syncCustomizeVariantProduct(product.id, productSetInput(plan), synchronous);
+    let updated = await admin.productCustomizeVariantState(product.id);
+    const updatedByKey = new Map(updated.variants.map((variant) => [selectionKey(variant.selectedOptions), variant]));
+    const variantMedia = [];
+    for (const target of plan.variants) {
+      if (!target.desiredMediaIds || !target.desiredMediaIds.length) continue;
+      const key = selectionKey(target.optionValues.map((item) => ({ name: item.optionName, value: item.name })));
+      const variant = updatedByKey.get(key);
+      if (!variant) continue;
+      const existing = new Set(variant.mediaIds || []);
+      const missing = target.desiredMediaIds.filter((id) => !existing.has(id));
+      if (missing.length) variantMedia.push({ variantId: variant.id, mediaIds: missing });
+    }
+    const media = await admin.appendVariantMedia(product.id, variantMedia);
+    const marker = await admin.setCustomizeVariantMarker(product.id, plan.marker);
+    updated = await admin.productCustomizeVariantState(product.id);
+    const result = {
+      ok: true,
+      message: `Synced ${updated.variants.length} native customize variant(s) for ${updated.title}.`,
+      product: { id: updated.id, title: updated.title },
+      summary: { ...plan.summary, finalVariantCount: updated.variants.length },
+      selectedGroups: plan.selectedGroups,
+      sourceFingerprint: source.sourceFingerprint,
+      productFingerprint: productFingerprint(updated),
+      operation: syncResult.operation,
+      marker,
+      media,
+    };
+    structuredLog("shopify_customize_variants_sync_response", {
+      ok: true,
+      productId: updated.id,
+      finalVariantCount: updated.variants.length,
+      operationId: syncResult.operation && syncResult.operation.id || null,
+      mediaAppendCount: media.count || 0,
+    });
+    jsonResponse(res, 200, result);
+  } catch (error) {
+    structuredLog("shopify_customize_variants_sync_response", { ok: false, error: error.message });
+    jsonResponse(res, 400, { ok: false, message: "Customize variant sync failed.", error: error.message, userErrors: error.userErrors || [] });
   }
 }
 
@@ -2185,6 +2319,16 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && requestUrl.pathname === "/api/shopify/sync-api") {
     handleShopifySyncApi(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/api/shopify/customize-variants/preview") {
+    handleCustomizeVariantPreview(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/api/shopify/customize-variants/sync-api") {
+    handleCustomizeVariantSyncApi(req, res);
     return;
   }
 

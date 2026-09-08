@@ -14,6 +14,7 @@ const {
   combinations,
 } = require("./lib/customize-variants");
 const { configureProxy, proxyStatusWithLocation } = require("./lib/proxy");
+const { personalizationPlan } = require("./lib/etsy-personalization");
 
 const PORT = Number(process.env.PORT || 3000);
 configureProxy();
@@ -306,6 +307,126 @@ async function handleShopifySyncApi(req, res) {
   }
 }
 
+async function personalizationPreview(body, apply = false) {
+  if (String(body.sourcePlatform || "etsy").toLowerCase() !== "etsy") throw new Error("This personalization endpoint currently accepts Etsy source data only.");
+  const plan = personalizationPlan(body.personalization, {
+    listingId: body.listingId || body.personalization?.listingId || "",
+    sourceUrl: body.sourceUrl || "",
+    profileSlug: body.profileSlug || "",
+  });
+  if (!plan.ok || !plan.config) return { ok: false, plan };
+  if (!body.productId) return { ok: true, exact: false, plan };
+  const admin = new ShopifyAdmin();
+  const product = await admin.product(body.productId);
+  const addon = await admin.ensurePersonalizationAddon(product.id, plan.config.pricing.amounts, plan.config.pricing.currencyCode, apply);
+  const config = JSON.parse(JSON.stringify(plan.config));
+  config.pricing.addonProduct = addon.marker || null;
+  const definitions = await admin.ensurePersonalizerDefinitions(apply);
+  const metafield = await admin.setProductPersonalizer(product.id, config, addon.marker, apply);
+  return {
+    ok: true,
+    exact: true,
+    plan: { ...plan, config },
+    product: { id: product.id, title: product.title },
+    addon,
+    definitions,
+    metafield,
+  };
+}
+
+async function handlePersonalizationPreview(req, res) {
+  try {
+    assertAdminAuthorized(req);
+    const body = JSON.parse(await readRequestBody(req) || "{}");
+    const result = await personalizationPreview(body, false);
+    structuredLog("shopify_personalization_preview", {
+      ok: result.ok,
+      productId: body.productId || null,
+      sourcePlatform: body.sourcePlatform || "etsy",
+      profileSlug: body.profileSlug || "",
+      questionCount: result.plan?.summary?.questionCount || 0,
+      surchargeCount: result.plan?.summary?.surchargeAmounts?.length || 0,
+      blockerCount: result.plan?.blockers?.length || 0,
+    });
+    jsonResponse(res, result.ok ? 200 : 400, result);
+  } catch (error) {
+    structuredLog("shopify_personalization_preview", { ok: false, error: error.message });
+    jsonResponse(res, 400, { ok: false, message: "Personalization preview failed.", error: error.message });
+  }
+}
+
+async function handlePersonalizationSyncApi(req, res) {
+  try {
+    assertAdminAuthorized(req);
+    const body = JSON.parse(await readRequestBody(req) || "{}");
+    if (!body.productId) throw new Error("Missing productId.");
+    const preview = personalizationPlan(body.personalization, {
+      listingId: body.listingId || body.personalization?.listingId || "",
+      sourceUrl: body.sourceUrl || "",
+      profileSlug: body.profileSlug || "",
+    });
+    if (!preview.ok || !preview.config) return jsonResponse(res, 400, { ok: false, message: "Personalization plan is blocked.", plan: preview });
+    if (body.expectedSourceFingerprint && body.expectedSourceFingerprint !== preview.config.source.fingerprint) {
+      return jsonResponse(res, 409, { ok: false, conflict: true, message: "Etsy personalization changed after preview. Preview again before sync." });
+    }
+    structuredLog("shopify_personalization_sync_request", {
+      productId: body.productId,
+      listingId: preview.config.source.listingId,
+      profileSlug: body.profileSlug || "",
+      questionCount: preview.summary.questionCount,
+      surchargeCount: preview.summary.surchargeAmounts.length,
+    });
+    const result = await personalizationPreview(body, true);
+    const verified = await new ShopifyAdmin().product(body.productId);
+    let savedConfig = null;
+    try { savedConfig = JSON.parse(verified.personalizer?.value || "null"); } catch {}
+    if (!savedConfig || savedConfig.source?.fingerprint !== preview.config.source.fingerprint) {
+      throw new Error("Shopify personalization metafield verification failed after sync.");
+    }
+    const response = {
+      ...result,
+      verified: true,
+      sourceFingerprint: preview.config.source.fingerprint,
+      message: `Synced ${preview.summary.questionCount} Etsy personalization question(s) for ${result.product.title}.`,
+    };
+    structuredLog("shopify_personalization_sync_response", {
+      ok: true,
+      productId: result.product.id,
+      questionCount: preview.summary.questionCount,
+      addonAction: result.addon?.action || "none",
+      changed: result.metafield?.changed !== false,
+    });
+    jsonResponse(res, 200, response);
+  } catch (error) {
+    structuredLog("shopify_personalization_sync_response", { ok: false, error: error.message });
+    jsonResponse(res, 400, { ok: false, message: "Personalization sync failed.", error: error.message });
+  }
+}
+
+async function handlePersonalizationStatus(req, res, requestUrl) {
+  try {
+    assertAdminAuthorized(req);
+    const productId = requestUrl.searchParams.get("productId") || "";
+    if (!productId) throw new Error("Missing productId.");
+    const product = await new ShopifyAdmin().product(productId);
+    let config = null;
+    let addon = null;
+    try { config = JSON.parse(product.personalizer?.value || "null"); } catch {}
+    try { addon = JSON.parse(product.personalizerAddon?.value || "null"); } catch {}
+    jsonResponse(res, 200, {
+      ok: true,
+      found: Boolean(config),
+      product: { id: product.id, title: product.title },
+      sourceFingerprint: config?.source?.fingerprint || null,
+      questionCount: config?.questions?.length || 0,
+      addon,
+      updatedAt: product.personalizer?.updatedAt || null,
+    });
+  } catch (error) {
+    jsonResponse(res, 400, { ok: false, found: false, error: error.message });
+  }
+}
+
 function parseDataUrl(value) {
   const match = String(value || "").match(/^data:([^;,]+);base64,([A-Za-z0-9+/=\r\n]+)$/);
   if (!match) throw new Error("Expected a base64 data URL.");
@@ -338,7 +459,7 @@ async function handleShopifyUpload(req, res, requestUrl) {
     if (!storefrontAuthorized(req, requestUrl)) throw new Error("Unauthorized upload request.");
     const body = JSON.parse(await readRequestBody(req) || "{}");
     const admin = new ShopifyAdmin();
-    const allowed = new Set(["image/png", "image/jpeg", "image/webp", "application/json"]);
+    const allowed = new Set(["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf", "application/json"]);
     if (body.action === "prepare") {
       const mimeType = String(body.mimeType || "");
       const fileSize = Number(body.fileSize || 0);
@@ -346,16 +467,17 @@ async function handleShopifyUpload(req, res, requestUrl) {
       if (!Number.isFinite(fileSize) || fileSize <= 0) throw new Error("Missing file size.");
       if (fileSize > 10 * 1024 * 1024) throw new Error("File exceeds the 10MB upload limit.");
       const timestamp = Date.now();
-      const extension = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/json": "json" }[mimeType];
+      const extension = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "application/pdf": "pdf", "application/json": "json" }[mimeType];
       const filename = `amzcustom-order-${timestamp}-${crypto.randomUUID()}.${extension}`;
-      console.log("[Amazon Customizer][Server] Upload prepare", { filename, mimeType, bytes: fileSize });
-      const target = await admin.createStagedUploadTarget({ filename, mimeType, fileSize, contentType: mimeType === "application/json" ? "FILE" : "IMAGE" });
+      console.log("[Product Personalizer][Server] Upload prepare", { mimeType, bytes: fileSize });
+      const contentType = mimeType.startsWith("image/") ? "IMAGE" : "FILE";
+      const target = await admin.createStagedUploadTarget({ filename, mimeType, fileSize, contentType });
       jsonResponse(res, 200, {
         ok: true,
         upload: {
           filename,
           mimeType,
-          contentType: mimeType === "application/json" ? "FILE" : "IMAGE",
+          contentType,
           url: target.url,
           resourceUrl: target.resourceUrl,
           parameters: target.parameters,
@@ -369,13 +491,13 @@ async function handleShopifyUpload(req, res, requestUrl) {
       const resourceUrl = String(body.resourceUrl || "");
       if (!allowed.has(mimeType)) throw new Error(`Unsupported MIME type: ${mimeType}`);
       if (!filename || !resourceUrl) throw new Error("Missing upload completion data.");
-      console.log("[Amazon Customizer][Server] Upload complete start", { filename, mimeType });
+      console.log("[Product Personalizer][Server] Upload complete start", { mimeType });
       const file = await admin.completeStagedUpload(resourceUrl, {
         filename,
-        alt: `Amazon customizer order asset ${Date.now()}`,
-        contentType: mimeType === "application/json" ? "FILE" : "IMAGE"
+        alt: `Product personalizer order asset ${Date.now()}`,
+        contentType: mimeType.startsWith("image/") ? "IMAGE" : "FILE"
       }, true);
-      console.log("[Amazon Customizer][Server] Upload completed", { filename, mimeType, elapsedMs: Date.now() - startedAt, fileId: file.id });
+      console.log("[Product Personalizer][Server] Upload completed", { mimeType, elapsedMs: Date.now() - startedAt, fileId: file.id });
       jsonResponse(res, 200, { ok: true, file: { id: file.id, url: shopifyFileUrl(file), filename } });
       return;
     }
@@ -383,14 +505,14 @@ async function handleShopifyUpload(req, res, requestUrl) {
     if (parsed.buffer.length > 10 * 1024 * 1024) throw new Error("File exceeds the 10MB upload limit.");
     if (!allowed.has(parsed.mimeType)) throw new Error(`Unsupported MIME type: ${parsed.mimeType}`);
     const timestamp = Date.now();
-    const extension = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/json": "json" }[parsed.mimeType];
+    const extension = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "application/pdf": "pdf", "application/json": "json" }[parsed.mimeType];
     const filename = `amzcustom-order-${timestamp}-${crypto.randomUUID()}.${extension}`;
-    console.log("[Amazon Customizer][Server] Upload started", { filename, mimeType: parsed.mimeType, bytes: parsed.buffer.length });
-    const file = await admin.uploadBuffer(parsed.buffer, { filename, mimeType: parsed.mimeType, alt: `Amazon customizer order asset ${timestamp}`, contentType: parsed.mimeType === "application/json" ? "FILE" : "IMAGE" }, true);
-    console.log("[Amazon Customizer][Server] Upload completed", { filename, mimeType: parsed.mimeType, bytes: parsed.buffer.length, elapsedMs: Date.now() - startedAt, fileId: file.id });
+    console.log("[Product Personalizer][Server] Upload started", { mimeType: parsed.mimeType, bytes: parsed.buffer.length });
+    const file = await admin.uploadBuffer(parsed.buffer, { filename, mimeType: parsed.mimeType, alt: `Product personalizer order asset ${timestamp}`, contentType: parsed.mimeType.startsWith("image/") ? "IMAGE" : "FILE" }, true);
+    console.log("[Product Personalizer][Server] Upload completed", { mimeType: parsed.mimeType, bytes: parsed.buffer.length, elapsedMs: Date.now() - startedAt, fileId: file.id });
     jsonResponse(res, 200, { ok: true, file: { id: file.id, url: shopifyFileUrl(file), filename } });
   } catch (error) {
-    console.warn("[Amazon Customizer][Server] Upload failed", {
+    console.warn("[Product Personalizer][Server] Upload failed", {
       elapsedMs: Date.now() - startedAt,
       error: error.message,
       name: error.name,
@@ -2319,6 +2441,21 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && requestUrl.pathname === "/api/shopify/sync-api") {
     handleShopifySyncApi(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/api/shopify/personalization/preview") {
+    handlePersonalizationPreview(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/api/shopify/personalization/sync-api") {
+    handlePersonalizationSyncApi(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && requestUrl.pathname === "/api/shopify/personalization/status") {
+    handlePersonalizationStatus(req, res, requestUrl);
     return;
   }
 

@@ -137,6 +137,12 @@ button:disabled {
   padding: 16px;
 }
 
+.controls-panel,
+.control-group {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .preview-panel {
   position: sticky;
   top: 0;

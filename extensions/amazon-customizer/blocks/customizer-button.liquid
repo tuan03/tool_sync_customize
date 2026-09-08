@@ -2,34 +2,55 @@
 {% if customizer_product == blank and closest.product != blank %}
   {% assign customizer_product = closest.product %}
 {% endif %}
-{% assign customizer_metafield = customizer_product.metafields.custom.amazon_customizer %}
-<!-- amazon-customizer: product={{ customizer_product.id | default: 'missing' }}, config={{ customizer_metafield.id | default: 'missing' }} -->
+{% assign personalizer_metafield = customizer_product.metafields.custom.product_personalizer %}
+{% assign amazon_customizer_metafield = customizer_product.metafields.custom.amazon_customizer %}
+{% assign personalizer_value = personalizer_metafield.value %}
+{% assign has_personalizer = false %}
+{% if personalizer_metafield != blank and personalizer_value.mode == 'personalization_form' and personalizer_value.questions.size > 0 %}
+  {% assign has_personalizer = true %}
+{% endif %}
+{% if has_personalizer %}
+  {% assign customizer_metafield = personalizer_metafield %}
+{% else %}
+  {% assign customizer_metafield = amazon_customizer_metafield %}
+{% endif %}
+{% assign customizer_product_image = customizer_product.selected_or_first_available_variant.featured_image | default: customizer_product.featured_image %}
+<!-- product-personalizer: product={{ customizer_product.id | default: 'missing' }}, config={{ customizer_metafield.id | default: 'missing' }} -->
 {% if customizer_metafield != blank %}
   <div
     class="amzcustom-root"
-    data-amzcustom-root
+    {% if has_personalizer %}data-product-personalizer-root{% else %}data-amzcustom-root{% endif %}
     data-product-id="{{ customizer_product.id }}"
     data-variant-id="{{ customizer_product.selected_or_first_available_variant.id }}"
+    data-product-form-id="HcProductForm-{{ section.id }}"
+    data-available="{{ customizer_product.selected_or_first_available_variant.available }}"
     data-base-price="{{ customizer_product.selected_or_first_available_variant.price | divided_by: 100.0 }}"
     data-currency-code="{{ localization.country.currency.iso_code | default: cart.currency.iso_code | default: shop.currency }}"
     data-country-code="{{ localization.country.iso_code | default: 'US' }}"
+    data-product-title="{{ customizer_product.title | escape }}"
+    data-product-image="{% if customizer_product_image != blank %}{{ customizer_product_image | image_url: width: 1200 }}{% endif %}"
     data-config="{{ customizer_metafield.value | json | escape }}"
     data-product-options="{{ customizer_product.options | json | escape }}"
     data-product-variants="{{ customizer_product.variants | json | escape }}"
     data-upload-url="{{ block.settings.upload_path | escape }}"
   >
-    <button class="amzcustom-open" type="button">{{ block.settings.button_label | escape }}</button>
+    <button class="amzcustom-open" type="button"{% unless customizer_product.selected_or_first_available_variant.available %} disabled{% endunless %}>{% if has_personalizer %}{{ block.settings.personalize_button_label | default: 'Customize' | escape }}{% else %}{{ block.settings.button_label | escape }}{% endif %}</button>
   </div>
   {{ 'amazon-customizer.css' | asset_url | stylesheet_tag }}
-  <script src="{{ 'amazon-customizer.js' | asset_url }}" defer></script>
+  {% if has_personalizer %}
+    <script src="{{ 'etsy-personalizer.js' | asset_url }}" defer></script>
+  {% else %}
+    <script src="{{ 'amazon-customizer.js' | asset_url }}" defer></script>
+  {% endif %}
 {% endif %}
 
 {% schema %}
 {
-  "name": "Amazon customizer",
+  "name": "Product personalizer",
   "target": "section",
   "settings": [
     { "type": "text", "id": "button_label", "label": "Button label", "default": "Customize" },
+    { "type": "text", "id": "personalize_button_label", "label": "Personalize button label", "default": "Customize" },
     { "type": "text", "id": "upload_path", "label": "App proxy upload path", "default": "/apps/amazon-customizer/upload" }
   ]
 }

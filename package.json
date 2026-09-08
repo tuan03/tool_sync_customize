@@ -11,6 +11,7 @@
     "cleanup": "node scripts/cleanup-shopify-files.js",
     "cleanup:apply": "node scripts/cleanup-shopify-files.js --apply",
     "test:smoke": "node tests/smoke-customizer.js",
+    "test:etsy-smoke": "node tests/smoke-etsy-personalizer.js && node tests/smoke-theme-etsy-personalizer.js",
     "test:unit": "node --test tests/*.test.js",
     "test": "npm run test:unit"
   },

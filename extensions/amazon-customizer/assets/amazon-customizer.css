@@ -282,3 +282,60 @@ body.amzcustom-locked { overflow: hidden; }
   .amzcustom-choices.is-collapsed { grid-template-columns: repeat(auto-fill,minmax(92px,1fr)); }
   .amzcustom-choice { min-height: 92px; }
 }
+
+.etsy-personalizer-required-form button[name="add"],
+.etsy-personalizer-required-form input[name="add"],
+.etsy-personalizer-required-form button[type="submit"]:not(.amzcustom-open),
+.etsy-personalizer-required-form input[type="submit"],
+.etsy-personalizer-required-form .shopify-payment-button,
+.etsy-personalizer-required-form [data-shopify="payment-button"] { display: none !important; }
+.etsy-personalizer-modal[hidden] { display: none !important; }
+.etsy-personalizer-modal,
+.etsy-personalizer-modal * { box-sizing: border-box; }
+.etsy-personalizer-modal { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-items: center; padding: 20px; }
+.etsy-personalizer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.62); }
+.etsy-personalizer-dialog { position: relative; display: grid; grid-template-rows: auto minmax(0,1fr) auto; width: min(1080px,100%); max-height: min(860px,94vh); overflow: hidden; border-radius: 8px; background: #fff; color: #171717; box-shadow: 0 20px 80px rgba(0,0,0,.3); }
+.etsy-personalizer-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid #ddd; }
+.etsy-personalizer-dialog h2 { margin: 0; font-size: 20px; line-height: 1.25; letter-spacing: 0; }
+.etsy-personalizer-dialog header p { margin: 3px 0 0; color: #565959; font-size: 13px; line-height: 1.35; }
+.etsy-personalizer-close { width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: #475467; font-size: 28px; cursor: pointer; }
+.etsy-personalizer-body { display: grid; grid-template-columns: minmax(300px,.9fr) minmax(340px,1.1fr); gap: 20px; min-height: 0; overflow: auto; padding: 18px; }
+.etsy-personalizer-preview { position: sticky; top: 0; align-self: start; display: grid; gap: 10px; }
+.etsy-personalizer-image-frame { width: 100%; aspect-ratio: 1; overflow: hidden; border: 1px solid #d5d9d9; border-radius: 6px; background: #f3f3f3; }
+.etsy-personalizer-product-image { width: 100%; height: 100%; object-fit: contain; }
+.etsy-personalizer-preview > p { margin: 0; color: #667085; font-size: 12px; line-height: 1.45; }
+.etsy-personalizer-questions { display: grid; align-content: start; min-width: 0; border: 1px solid #e3e6e6; border-radius: 6px; }
+.etsy-personalizer-question { display: grid; gap: 8px; padding: 14px; border-bottom: 1px solid #e3e6e6; }
+.etsy-personalizer-question:last-child { border-bottom: 0; }
+.etsy-personalizer-question-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.etsy-personalizer-question-head label { font-weight: 800; line-height: 1.4; }
+.etsy-personalizer-question-head > div { display: flex; gap: 6px; flex: 0 0 auto; }
+.etsy-personalizer-required,.etsy-personalizer-optional,.etsy-personalizer-fee { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 7px; border-radius: 999px; background: #eef4ff; color: #175cd3; font-size: 11px; font-weight: 700; }
+.etsy-personalizer-optional { background: #f2f4f7; color: #475467; }
+.etsy-personalizer-fee { background: #ecfdf3; color: #027a48; }
+.etsy-personalizer-question p { margin: 0; white-space: pre-line; color: #667085; font-size: 13px; line-height: 1.5; }
+.etsy-personalizer-question textarea,.etsy-personalizer-question select,.etsy-personalizer-upload { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid #888c8c; border-radius: 4px; background: #fff; color: #101828; font: inherit; }
+.etsy-personalizer-question textarea { resize: vertical; }
+.etsy-personalizer-counter { text-align: right; color: #667085; font-size: 12px; }
+.etsy-personalizer-uploads { display: grid; gap: 8px; }
+.etsy-personalizer-upload { display: grid; gap: 6px; cursor: pointer; }
+.etsy-personalizer-upload span { font-size: 12px; font-weight: 700; }
+.etsy-personalizer-error { color: #b42318; font-size: 13px; font-weight: 700; }
+.etsy-personalizer-dialog footer { display: grid; grid-template-columns: auto minmax(120px,1fr) auto; align-items: center; gap: 16px; padding: 14px 20px; border-top: 1px solid #ddd; background: #fff; }
+.etsy-personalizer-price-summary { display: grid; gap: 2px; min-width: 170px; font-size: 13px; }
+.etsy-personalizer-total-price { font-size: 16px; }
+.etsy-personalizer-status { color: #667085; font-size: 13px; line-height: 1.4; }
+.etsy-personalizer-actions { display: flex; gap: 10px; }
+.etsy-personalizer-buy-now,.etsy-personalizer-add { min-width: 160px; min-height: 46px; padding: 10px 18px; border: 1px solid #fcd200; border-radius: 999px; background: #ffd814; color: #111; font-weight: 800; cursor: pointer; }
+.etsy-personalizer-buy-now { border-color: #111; background: #111; color: #fff; }
+.etsy-personalizer-buy-now:disabled,.etsy-personalizer-add:disabled { opacity: .6; cursor: wait; }
+@media (max-width: 760px) {
+  .etsy-personalizer-modal { padding: 16px; }
+  .etsy-personalizer-dialog { max-height: calc(100dvh - 32px); }
+  .etsy-personalizer-body { grid-template-columns: 1fr; gap: 14px; padding: 12px; }
+  .etsy-personalizer-preview { position: static; }
+  .etsy-personalizer-image-frame { width: min(100%,280px,34dvh); margin: auto; }
+  .etsy-personalizer-dialog footer { grid-template-columns: 1fr; gap: 8px; padding: 12px; }
+  .etsy-personalizer-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .etsy-personalizer-buy-now,.etsy-personalizer-add { min-width: 0; width: 100%; padding: 8px; border-radius: 12px; font-size: 13px; }
+}

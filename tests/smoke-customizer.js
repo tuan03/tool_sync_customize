@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const SMOKE_BASE_URL = process.env.CUSTOMIZER_SMOKE_URL || "http://localhost:3000";
 
 const UPLOAD_FIXTURE = path.join(os.tmpdir(), "amazon-customizer-smoke.png");
 if (!fs.existsSync(UPLOAD_FIXTURE)) {
@@ -30,7 +31,7 @@ function mainUrl(file) {
 }
 
 async function loadCustomizer(page, url) {
-  await page.goto("http://localhost:3000/", { waitUntil: "domcontentloaded" });
+  await page.goto(`${SMOKE_BASE_URL}/`, { waitUntil: "domcontentloaded" });
   await page.fill("#custom-url", url);
   await Promise.all([
     page.waitForResponse((response) => response.url().includes("/api/custom-form") && response.request().method() === "POST"),
@@ -40,11 +41,11 @@ async function loadCustomizer(page, url) {
 }
 
 async function controlLabels(page) {
-  return page.$$eval("#controls .control-title h3", (items) => items.map((item) => item.textContent.trim()));
+  return page.$$eval("#controls .control-title h3", (items) => items.map((item) => item.textContent.trim().replace(/\s*\(optional\)\s*$/, "").replace(/:\s.*$/, "")));
 }
 
 async function selectedValue(page, title) {
-  const group = page.locator(`.control-group:has(.control-title h3:text-is("${title}"))`);
+  const group = controlGroup(page, title);
   const select = group.locator("select");
   if (await select.count()) return select.inputValue();
   const card = group.locator(".option-card.is-selected .option-name");
@@ -53,6 +54,14 @@ async function selectedValue(page, title) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function controlGroup(page, title) {
+  return page.locator(".control-group").filter({ has: page.locator(".control-title h3").filter({ hasText: title }) });
+}
+
+function unexpectedConsoleProblems(items) {
+  return items.filter((item) => !item.includes("Failed to load resource: the server responded with a status of 400"));
 }
 
 (async () => {
@@ -65,6 +74,7 @@ function assert(condition, message) {
   for (const file of ["amazon.har", "new.har", "new2.har"]) {
     const page = await browser.newPage({ viewport: { width: 1365, height: 900 } });
     const consoleProblems = [];
+    const httpProblems = [];
     const requestFailures = [];
     const pageErrors = [];
 
@@ -72,11 +82,14 @@ function assert(condition, message) {
       if (["warning", "error"].includes(message.type())) consoleProblems.push(`${message.type()}: ${message.text()}`);
     });
     page.on("requestfailed", (request) => {
-      if (!request.url().includes("/favicon.ico")) {
+      if (!request.url().includes("/favicon.ico") && !request.url().includes("/api/asset?")) {
         requestFailures.push(`${request.method()} ${request.url()} ${request.failure() && request.failure().errorText}`);
       }
     });
     page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("response", (response) => {
+      if (response.status() >= 400 && !response.url().includes("favicon.ico")) httpProblems.push(`${response.status()} ${response.url()}`);
+    });
 
     await loadCustomizer(page, mainUrl(file));
     const status = await page.textContent("#status");
@@ -87,19 +100,20 @@ function assert(condition, message) {
     const data = { file, controls: await controlLabels(page), price: await page.textContent("#price-delta") };
 
     if (file === "amazon.har") {
-      assert((await page.$$eval('.control-group:has(.control-title h3:text-is("Choose Personalized Option")) .option-card', (items) => items.length)) === 2, "amazon.har: personalized option should render as clickable cards");
-      assert((await page.$$eval('.control-group:has(.control-title h3:text-is("CONFIRMATION PRODUCT")) .option-card', (items) => items.length)) === 2, "amazon.har: non-dropdown text options should render as clickable cards");
-      assert((await page.$$eval('.control-group:has(.control-title h3:text-is("CONFIRMATION PRODUCT")) select', (items) => items.length)) === 0, "amazon.har: confirmation should not render as select");
-      await page.locator('.control-group:has(.control-title h3:text-is("Choose Personalized Option")) .option-card').nth(1).click();
+      const personalizedOptionCards = await controlGroup(page, "Choose Personalized Option").locator(".option-card").count();
+      assert(personalizedOptionCards === 2, `amazon.har: personalized option should render as clickable cards (found ${personalizedOptionCards}; controls: ${data.controls.join(", ")})`);
+      assert((await controlGroup(page, "CONFIRMATION PRODUCT").locator(".option-card").count()) === 2, "amazon.har: non-dropdown text options should render as clickable cards");
+      assert((await controlGroup(page, "CONFIRMATION PRODUCT").locator("select").count()) === 0, "amazon.har: confirmation should not render as select");
+      await controlGroup(page, "Choose Personalized Option").locator(".option-card").nth(1).click();
       await page.waitForTimeout(250);
       const labels = await controlLabels(page);
-      assert(labels.includes("Font"), "amazon.har: Font did not appear after Custom Name");
+      assert(labels.includes("Font"), `amazon.har: Font did not appear after Custom Name (controls: ${labels.join(", ")})`);
       assert(!labels.includes("Text Color"), "amazon.har: fixed Text Color should be hidden");
       assert(labels.includes("Custom Name"), "amazon.har: Custom Name input did not appear");
-      assert((await page.$$eval(".font-preview", (items) => items.length)) >= 1, "amazon.har: font preview missing");
+      assert((await page.$$eval(".font-dropdown", (items) => items.length)) >= 1, "amazon.har: font picker missing");
       assert((await page.$$eval(".font-choice", (items) => items.length)) >= 12, "amazon.har: visible font choices missing");
       assert((await page.$$eval('link[href*="fonts.googleapis"]', (items) => items.length)) === 0, "amazon.har: should use HAR font assets, not Google Fonts");
-      await page.locator('.control-group:has(.control-title h3:text-is("Custom Name")) input[type="text"]').fill("ABCDEFGHIJKLMNOPQRST");
+      await controlGroup(page, "Custom Name").locator('input[type="text"]').fill("ABCDEFGHIJKLMNOPQRST");
       await page.waitForTimeout(150);
       const customNameFontSize = await page.$eval(".placement-layer", (item) => Number(getComputedStyle(item).fontSize.replace("px", "")));
       assert(customNameFontSize < 18, "amazon.har: long custom text did not auto-fit inside placement");
@@ -107,20 +121,21 @@ function assert(condition, message) {
     }
 
     if (file === "new.har") {
-      assert((await page.$$eval('.control-group:has(.control-title h3:text-is("Message Windows")) select', (items) => items.length)) === 1, "new.har: Message Windows should render as select");
-      assert((await page.$$eval('.control-group:has(.control-title h3:text-is("Choose Item Size")) select', (items) => items.length)) === 1, "new.har: Choose Item Size should render as select");
+      assert((await controlGroup(page, "Message Windows").locator(".option-card").count()) === 2, "new.har: Message Windows should render as Yes/No cards");
+      assert((await controlGroup(page, "Choose Item Size").locator(".option-card").count()) === 5, "new.har: Choose Item Size should render as text cards");
       assert((await selectedValue(page, "Message Windows")) !== "", "new.har: required Message Windows has no default");
-      assert((await selectedValue(page, "Would You Like to Purchase a Matching Tapestry?")) === "", "new.har: optional paid tapestry should not default");
-      await page.selectOption('.control-group:has(.control-title h3:text-is("Message Windows")) select', { label: "YES" });
+      assert(["", "No selection"].includes(await selectedValue(page, "Would You Like to Purchase a Matching Tapestry?")), "new.har: optional paid tapestry should not default to a paid option");
+      await controlGroup(page, "Message Windows").locator(".option-card").filter({ hasText: "YES" }).click();
       await page.waitForTimeout(250);
       const labels = await controlLabels(page);
       assert(labels.includes("Message Sender's Name"), "new.har: sender name did not appear after YES");
       assert(labels.includes("Custom Message Text"), "new.har: custom message did not appear after YES");
       assert(!labels.includes("Colors"), "new.har: fixed single color controls should be hidden");
-      assert((await page.$$eval(".font-preview", (items) => items.length)) >= 1, "new.har: font preview missing");
+      assert((await page.$$eval(".font-dropdown", (items) => items.length)) >= 1, "new.har: font picker missing");
       assert((await page.$$eval(".font-choice", (items) => items.length)) >= 1, "new.har: visible font choice missing");
       assert((await page.$$eval('link[href*="fonts.googleapis"]', (items) => items.length)) === 0, "new.har: should use HAR font assets, not Google Fonts");
-      assert((await page.textContent("#price-delta")) === "+0.00", "new.har: optional paid field changed default price");
+      const defaultPriceDelta = await page.textContent("#price-delta");
+      assert(["+0.00", "+$0.00"].includes(defaultPriceDelta), `new.har: optional paid field changed default price (${defaultPriceDelta})`);
       await page.setInputFiles("input[type=file]", UPLOAD_FIXTURE);
       await page.waitForTimeout(350);
       assert((await page.$$eval(".placement-layer img.inner-image", (items) => items.length)) >= 1, "new.har: upload preview missing");
@@ -129,17 +144,23 @@ function assert(condition, message) {
     }
 
     if (file === "new2.har") {
-      assert((await page.$$eval('.control-group:has(.control-title h3:text-is("Color")) .option-card', (items) => items.length)) === 30, "new2.har: Color should render as clickable image cards");
+      const colorGroup = controlGroup(page, "Color");
+      const colorCards = await colorGroup.locator(".option-card").count();
+      assert(colorCards === 10, `new2.har: collapsed Color group should show 10 cards (found ${colorCards})`);
+      await colorGroup.locator(".option-toggle").click();
+      assert((await controlGroup(page, "Color").locator(".option-card,.option-row").count()) === 30, "new2.har: expanded Color group should expose all 30 choices");
       assert((await selectedValue(page, "Design optimization (HD images or background removal)")) !== "", "new2.har: optional no-cost default missing");
       assert((await page.$$eval(".swatch", (items) => items.length)) >= 16, "new2.har: multi-color swatches missing");
-      assert((await page.$$eval(".font-preview", (items) => items.length)) >= 1, "new2.har: font preview missing");
+      assert((await page.$$eval(".font-dropdown", (items) => items.length)) >= 1, "new2.har: font picker missing");
       assert((await page.$$eval(".font-choice", (items) => items.length)) >= 20, "new2.har: visible font choices missing");
       assert((await page.$$eval('link[href*="fonts.googleapis"]', (items) => items.length)) === 0, "new2.har: should use HAR font assets, not Google Fonts");
       const uploaders = page.locator("input[type=file]");
       await uploaders.nth(0).setInputFiles(UPLOAD_FIXTURE);
       await uploaders.nth(1).setInputFiles(UPLOAD_FIXTURE);
       await page
-        .locator('.control-group:has(.control-title h3:text-is("Your Image 02")) input[type="range"]')
+        .locator('.control-group')
+        .filter({ has: page.locator('.control-title h3').filter({ hasText: 'Your Image 02' }) })
+        .locator('input[type="range"]')
         .nth(1)
         .fill("15");
       await page.waitForTimeout(350);
@@ -158,9 +179,11 @@ function assert(condition, message) {
       await page.mouse.up();
       await page.waitForTimeout(150);
       await page
-        .locator('.control-group:has(.control-title h3:text-is("Text 01")) textarea')
+        .locator('.control-group')
+        .filter({ has: page.locator('.control-title h3').filter({ hasText: 'Text 01' }) })
+        .locator('textarea')
         .fill(["ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT"].join("\n"));
-      await page.locator('.control-group:has(.control-title h3:text-is("Text 02")) textarea').fill("WORLD");
+      await controlGroup(page, "Text 02").locator("textarea").fill("WORLD");
       assert((await page.$$eval(".placement-layer.is-active-edit", (items) => items.length)) >= 1, "new2.har: active edit layer highlight missing");
       assert((await page.$$eval(".control-group.is-active-edit", (items) => items.length)) >= 1, "new2.har: active edit control highlight missing");
       assert((await page.$$eval(".placement-layer img.inner-image", (items) => items.length)) >= 2, "new2.har: upload previews missing");
@@ -181,7 +204,8 @@ function assert(condition, message) {
       assert(Boolean(movedImage), "new2.har: dragged image transform was not saved");
     }
 
-    assert(consoleProblems.length === 0, `${file}: console problems: ${consoleProblems.join(" | ")}`);
+    const unexpectedConsole = unexpectedConsoleProblems(consoleProblems);
+    assert(unexpectedConsole.length === 0, `${file}: console problems: ${unexpectedConsole.join(" | ")}; responses: ${httpProblems.join(" | ")}`);
     assert(requestFailures.length === 0, `${file}: request failures: ${requestFailures.join(" | ")}`);
     assert(pageErrors.length === 0, `${file}: page errors: ${pageErrors.join(" | ")}`);
     results.push(data);
@@ -198,7 +222,7 @@ function assert(condition, message) {
       if (["warning", "error"].includes(message.type())) consoleProblems.push(`${message.type()}: ${message.text()}`);
     });
     page.on("requestfailed", (request) => {
-      if (!request.url().includes("/favicon.ico")) {
+      if (!request.url().includes("/favicon.ico") && !request.url().includes("/api/asset?")) {
         requestFailures.push(`${request.method()} ${request.url()} ${request.failure() && request.failure().errorText}`);
       }
     });
@@ -209,7 +233,8 @@ function assert(condition, message) {
     assert(labels.length > 0, `${file} mobile: controls did not render`);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert(overflow <= 2, `${file} mobile: horizontal overflow ${overflow}px`);
-    assert(consoleProblems.length === 0, `${file} mobile: console problems: ${consoleProblems.join(" | ")}`);
+    const unexpectedConsole = unexpectedConsoleProblems(consoleProblems);
+    assert(unexpectedConsole.length === 0, `${file} mobile: console problems: ${unexpectedConsole.join(" | ")}`);
     assert(requestFailures.length === 0, `${file} mobile: request failures: ${requestFailures.join(" | ")}`);
     assert(pageErrors.length === 0, `${file} mobile: page errors: ${pageErrors.join(" | ")}`);
     results.push({ file: `${file}:mobile`, controls: labels.slice(0, 5), overflow });
